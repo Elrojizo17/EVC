@@ -1,0 +1,15 @@
+# Dependencias
+backend/node_modules/
+frontend/node_modules/
+
+# Builds
+frontend/dist/
+
+# Entornos
+backend/.env
+.env
+
+# Archivos de editor/OS
+.vscode/
+.DS_Store
+Thumbs.db

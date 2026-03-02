@@ -1,0 +1,91 @@
+CREATE TABLE luminaria (
+  numero_lampara TEXT PRIMARY KEY,
+  sector TEXT NOT NULL,
+  numero_transformador TEXT NOT NULL,
+  tecnologia TEXT NOT NULL,
+  potencia_w INTEGER NOT NULL CHECK (potencia_w > 0),
+  coord_x NUMERIC(10,6) NOT NULL,
+  coord_y NUMERIC(10,6) NOT NULL,
+  estado TEXT NOT NULL CHECK (estado IN ('ACTIVA', 'INACTIVA', 'DAÑADA')),
+  direccion TEXT NOT NULL,
+  barrio TEXT NOT NULL,
+  observaciones TEXT
+);
+
+
+
+CREATE TABLE novedad_luminaria (
+  id_novedad SERIAL PRIMARY KEY,
+  numero_lampara TEXT NOT NULL,
+  tipo_novedad TEXT NOT NULL CHECK (
+    tipo_novedad IN ('MANTENIMIENTO', 'CAMBIO_TECNOLOGIA', 'REPARACION')
+  ),
+  tecnologia_anterior TEXT,
+  tecnologia_nueva TEXT,
+  accion TEXT,
+  fecha_novedad TIMESTAMP NOT NULL DEFAULT NOW(),
+  fecha_registro TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  observacion TEXT,
+
+  CONSTRAINT fk_novedad_luminaria
+    FOREIGN KEY (numero_lampara)
+    REFERENCES luminaria(numero_lampara)
+    ON DELETE RESTRICT
+);
+
+
+
+CREATE TABLE inventario_bodega (
+  id_inventario SERIAL PRIMARY KEY,
+  codigo_elemento TEXT NOT NULL UNIQUE,
+  elemento TEXT NOT NULL,
+  cantidad INTEGER NOT NULL CHECK (cantidad >= 0),
+  costo_unitario NUMERIC(12,2) NOT NULL CHECK (costo_unitario >= 0),
+  fecha_compra DATE NOT NULL
+);
+
+
+
+CREATE TABLE gasto_inventario (
+  id_gasto SERIAL PRIMARY KEY,
+  id_novedad INTEGER NOT NULL,
+  id_inventario INTEGER NOT NULL,
+  cantidad_usada INTEGER NOT NULL CHECK (cantidad_usada > 0),
+  fecha_registro TIMESTAMP NOT NULL DEFAULT NOW(),
+  observacion TEXT,
+
+  CONSTRAINT fk_gasto_novedad
+    FOREIGN KEY (id_novedad)
+    REFERENCES novedad_luminaria(id_novedad)
+    ON DELETE CASCADE,
+
+  CONSTRAINT fk_gasto_inventario
+    FOREIGN KEY (id_inventario)
+    REFERENCES inventario_bodega(id_inventario)
+    ON DELETE RESTRICT
+);
+
+
+
+CREATE TABLE ingreso_inventario (
+  id_ingreso SERIAL PRIMARY KEY,
+  id_inventario INTEGER NOT NULL,
+  cantidad_ingresada INTEGER NOT NULL CHECK (cantidad_ingresada > 0),
+  fecha_ingreso DATE NOT NULL,
+  observacion TEXT,
+
+  CONSTRAINT fk_ingreso_inventario
+    FOREIGN KEY (id_inventario)
+    REFERENCES inventario_bodega(id_inventario)
+    ON DELETE RESTRICT
+);
+
+
+
+SELECT
+  elemento,
+  cantidad,
+  costo_unitario,
+  cantidad * costo_unitario AS costo_total
+FROM inventario_bodega;
+
