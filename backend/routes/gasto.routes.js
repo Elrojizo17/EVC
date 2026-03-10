@@ -24,9 +24,9 @@ router.get("/", async (req, res) => {
                 nl.numero_lampara
             FROM movimiento_bodega mb
             JOIN lote_producto lp ON lp.id_lote = mb.id_lote
-            JOIN producto p ON p.id_producto = lp.id_producto
+            JOIN producto p ON p.codigo = lp.codigo_producto
+            LEFT JOIN electricista e ON e.documento = mb.id_electricista
             LEFT JOIN novedad_luminaria nl ON nl.id_novedad = mb.id_novedad_luminaria
-            LEFT JOIN electricista e ON e.id_electricista = mb.id_electricista
             ORDER BY mb.fecha DESC
         `);
         res.json(result.rows);
@@ -63,14 +63,6 @@ router.post("/", async (req, res) => {
             throw new Error('Tipo de movimiento inválido');
         }
 
-        if (!id_electricista) {
-            throw new Error('Debe indicar el id del electricista responsable');
-        }
-
-        if (!codigo_pqr || String(codigo_pqr).trim() === '') {
-            throw new Error('Debe registrar el código de PQR');
-        }
-
         let fechaMovimiento;
         if (fecha) {
             const fechaTexto = String(fecha).trim();
@@ -99,15 +91,6 @@ router.post("/", async (req, res) => {
             fechaMovimiento = new Date();
         }
 
-        // Verificar que el electricista existe
-        const electCheck = await client.query(
-            'SELECT id_electricista FROM electricista WHERE id_electricista = $1',
-            [id_electricista]
-        );
-        if (electCheck.rows.length === 0) {
-            throw new Error('Electricista no encontrado');
-        }
-
         // Verificar que el lote existe
         const loteCheck = await client.query(
             `SELECT
@@ -115,7 +98,7 @@ router.post("/", async (req, res) => {
                 lp.cantidad,
                 lp.precio_unitario
             FROM lote_producto lp
-            JOIN producto p ON p.id_producto = lp.id_producto
+            JOIN producto p ON p.codigo = lp.codigo_producto
             WHERE lp.id_lote = $1`,
             [id_lote]
         );
@@ -150,6 +133,26 @@ router.post("/", async (req, res) => {
             }
         }
 
+        const electricistaDocumento = id_electricista ? String(id_electricista).trim() : "";
+        if (!electricistaDocumento) {
+            throw new Error("Debes seleccionar un electricista responsable");
+        }
+
+        const electricistaCheck = await client.query(
+            `SELECT documento, nombre, activo
+             FROM electricista
+             WHERE documento = $1`,
+            [electricistaDocumento]
+        );
+
+        if (electricistaCheck.rows.length === 0) {
+            throw new Error("Electricista no encontrado");
+        }
+
+        if (!electricistaCheck.rows[0].activo) {
+            throw new Error("El electricista seleccionado no está disponible");
+        }
+
         // Registrar el movimiento
         const query = `
             INSERT INTO movimiento_bodega (
@@ -158,9 +161,9 @@ router.post("/", async (req, res) => {
                 cantidad,
                 id_novedad_luminaria,
                 observacion,
+                fecha,
                 id_electricista,
-                codigo_pqr,
-                fecha
+                codigo_pqr
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING *
         `;
@@ -171,9 +174,9 @@ router.post("/", async (req, res) => {
             cantidadSolicitada,
             id_novedad_luminaria || null,
             observacion || null,
-            Number(id_electricista),
-            codigo_pqr,
-            fechaMovimiento
+            fechaMovimiento,
+            electricistaDocumento,
+            codigo_pqr || null
         ];
 
         const result = await client.query(query, values);

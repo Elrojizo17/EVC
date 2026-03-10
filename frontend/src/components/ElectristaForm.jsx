@@ -85,7 +85,8 @@ export default function ElectristaForm({ onSuccess, onCancel }) {
             boxShadow: "0 10px 25px rgba(15,23,42,0.08)",
             padding: "22px 24px 20px",
             marginTop: "14px",
-            border: "1px solid #e5e7eb"
+            border: "1px solid #e5e7eb",
+            maxWidth: "920px"
         }}>
             <div style={{
                 display: "flex",
@@ -139,11 +140,12 @@ export default function ElectristaForm({ onSuccess, onCancel }) {
 
             <div style={{
                 display: "grid",
-                gridTemplateColumns: "minmax(0, 1.2fr) minmax(0, 1fr)",
-                gap: "16px 20px",
-                alignItems: "flex-start"
+                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 300px))",
+                gap: "14px 18px",
+                alignItems: "flex-start",
+                justifyContent: "flex-start"
             }}>
-                <div>
+                <div style={{ width: "100%", maxWidth: "300px" }}>
                     <FormInput
                         label="Nombre completo"
                         name="nombre"
@@ -158,7 +160,7 @@ export default function ElectristaForm({ onSuccess, onCancel }) {
                         required
                     />
                 </div>
-                <div>
+                <div style={{ width: "100%", maxWidth: "300px" }}>
                     <FormInput
                         label="Documento"
                         name="documento"
@@ -173,7 +175,7 @@ export default function ElectristaForm({ onSuccess, onCancel }) {
                         required
                     />
                 </div>
-                <div>
+                <div style={{ width: "100%", maxWidth: "300px" }}>
                     <FormInput
                         label="Teléfono (opcional)"
                         name="telefono"
@@ -190,8 +192,8 @@ export default function ElectristaForm({ onSuccess, onCancel }) {
             </div>
 
             <div style={{
-                marginTop: "10px",
-                paddingTop: "10px",
+                marginTop: "14px",
+                paddingTop: "12px",
                 borderTop: "1px dashed #e5e7eb",
                 display: "flex",
                 justifyContent: "space-between",

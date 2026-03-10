@@ -4,6 +4,7 @@ import Dashboard from "./pages/Dashboard";
 import NovedadCenso from "./pages/NovedadCenso";
 import InventarioBodega from "./pages/InventarioBodega";
 import ReporteNovedades from "./pages/ReporteNovedades";
+import ReporteGastosGenerales from "./pages/ReporteGastosGenerales";
 import Electricistas from "./pages/Electricistas";
 import DevolucionesPrestamos from "./pages/DevolucionesPrestamos";
 
@@ -30,6 +31,7 @@ function App() {
         <Route path="/novedad-censo" element={<NovedadCenso />} />
         <Route path="/inventario-bodega" element={<InventarioBodega />} />
         <Route path="/reporte-novedades" element={<ReporteNovedades />} />
+        <Route path="/reporte-gastos" element={<ReporteGastosGenerales />} />
         <Route path="/electricistas" element={<Electricistas />} />
         <Route path="/devoluciones-prestamos" element={<DevolucionesPrestamos />} />
       </Routes>

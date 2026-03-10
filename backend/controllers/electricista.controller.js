@@ -5,7 +5,7 @@ exports.getAllElectricistas = async (req, res) => {
     try {
         const result = await pool.query(
             `SELECT 
-                id_electricista,
+                documento as id_electricista,
                 nombre,
                 documento,
                 telefono,
@@ -27,7 +27,7 @@ exports.getElectristaConInventario = async (req, res) => {
     try {
         const result = await pool.query(
             `SELECT 
-                e.id_electricista,
+                e.documento as id_electricista,
                 e.nombre,
                 e.documento,
                 e.telefono,
@@ -45,11 +45,11 @@ exports.getElectristaConInventario = async (req, res) => {
                     )
                 ) FILTER (WHERE ie.id_registro IS NOT NULL) as inventario
             FROM electricista e
-            LEFT JOIN inventario_electricista ie ON e.id_electricista = ie.id_electricista
+            LEFT JOIN inventario_electricista ie ON e.documento = ie.documento_electricista
             LEFT JOIN lote_producto lp ON ie.id_lote = lp.id_lote
-            LEFT JOIN producto p ON lp.id_producto = p.id_producto
-            WHERE e.id_electricista = $1
-            GROUP BY e.id_electricista`,
+            LEFT JOIN producto p ON lp.codigo_producto = p.codigo
+            WHERE e.documento = $1
+            GROUP BY e.documento, e.nombre, e.telefono, e.activo, e.fecha_registro`,
             [id]
         );
 
@@ -75,7 +75,7 @@ exports.createElectricista = async (req, res) => {
         const result = await pool.query(
             `INSERT INTO electricista (nombre, documento, telefono, activo, fecha_registro)
             VALUES ($1, $2, $3, TRUE, CURRENT_TIMESTAMP)
-            RETURNING id_electricista, nombre, documento, telefono, activo, fecha_registro`,
+            RETURNING documento as id_electricista, nombre, documento, telefono, activo, fecha_registro`,
             [nombre, documento, telefono || null]
         );
         res.status(201).json(result.rows[0]);
@@ -92,18 +92,17 @@ exports.createElectricista = async (req, res) => {
 // PUT update electrician
 exports.updateElectricista = async (req, res) => {
     const { id } = req.params;
-    const { nombre, documento, telefono, activo } = req.body;
+    const { nombre, telefono, activo } = req.body;
 
     try {
         const result = await pool.query(
             `UPDATE electricista 
             SET nombre = COALESCE($2, nombre),
-                documento = COALESCE($3, documento),
-                telefono = COALESCE($4, telefono),
-                activo = COALESCE($5, activo)
-            WHERE id_electricista = $1
-            RETURNING id_electricista, nombre, documento, telefono, activo, fecha_registro`,
-            [id, nombre, documento, telefono, activo]
+                telefono = COALESCE($3, telefono),
+                activo = COALESCE($4, activo)
+            WHERE documento = $1
+            RETURNING documento as id_electricista, nombre, documento, telefono, activo, fecha_registro`,
+            [id, nombre, telefono, activo]
         );
 
         if (result.rows.length === 0) {
@@ -131,7 +130,7 @@ exports.asignarProductoElectricista = async (req, res) => {
     try {
         // Check if electrician exists
         const electCheck = await pool.query(
-            "SELECT id_electricista FROM electricista WHERE id_electricista = $1",
+            "SELECT documento FROM electricista WHERE documento = $1",
             [id_electricista]
         );
         if (electCheck.rows.length === 0) {
@@ -149,11 +148,11 @@ exports.asignarProductoElectricista = async (req, res) => {
 
         // Insert or update
         const result = await pool.query(
-            `INSERT INTO inventario_electricista (id_electricista, id_lote, cantidad)
+            `INSERT INTO inventario_electricista (documento_electricista, id_lote, cantidad)
             VALUES ($1, $2, $3)
-            ON CONFLICT (id_electricista, id_lote) 
-            DO UPDATE SET cantidad = $3
-            RETURNING id_registro, id_electricista, id_lote, cantidad`,
+            ON CONFLICT (documento_electricista, id_lote) 
+            DO UPDATE SET cantidad = EXCLUDED.cantidad
+            RETURNING id_registro, documento_electricista as id_electricista, id_lote, cantidad`,
             [id_electricista, id_lote, cantidad]
         );
 
@@ -190,7 +189,7 @@ exports.getProductos = async (req, res) => {
     try {
         const result = await pool.query(
             `SELECT 
-                id_producto,
+                codigo as id_producto,
                 codigo,
                 nombre,
                 activo
@@ -211,7 +210,8 @@ exports.getLotes = async (req, res) => {
     try {
         let query = `SELECT 
                         id_lote,
-                        id_producto,
+                        codigo_producto as id_producto,
+                        codigo_producto,
                         anio_compra,
                         precio_unitario,
                         cantidad,
@@ -221,7 +221,7 @@ exports.getLotes = async (req, res) => {
         const params = [];
 
         if (id_producto) {
-            query += " AND id_producto = $1";
+            query += " AND codigo_producto = $1";
             params.push(id_producto);
         }
 

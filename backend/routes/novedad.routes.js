@@ -104,7 +104,7 @@ router.post("/", async (req, res) => {
                                 p.nombre as elemento,
                                 p.codigo as codigo_elemento
                              FROM lote_producto lp
-                             JOIN producto p ON lp.id_producto = p.id_producto
+                             JOIN producto p ON lp.codigo_producto = p.codigo
                              WHERE lp.id_lote = $1`,
                             [id_elemento_reemplazo]
                         );

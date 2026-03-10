@@ -5,7 +5,8 @@ const actions = [
     { label: "Ingresar al Inventario", path: "/inventario-bodega", category: "inventario" },
     { label: "Devoluciones / Préstamos", path: "/devoluciones-prestamos", category: "inventario" },
     { label: "Gestionar Electricistas", path: "/electricistas", category: "gestion" },
-    { label: "Ver Reportes", path: "/reporte-novedades", category: "reportes" }
+    { label: "Reporte Novedades", path: "/reporte-novedades", category: "reportes" },
+    { label: "Reporte Gastos", path: "/reporte-gastos", category: "reportes" }
 ];
 
 const getCategoryColor = (category) => {

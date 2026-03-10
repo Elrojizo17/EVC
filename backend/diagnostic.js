@@ -49,7 +49,7 @@ async function checkTables() {
         const lotes = await pool.query(`
             SELECT lp.id_lote, p.codigo, p.nombre, lp.cantidad, lp.precio_unitario, lp.fecha_compra
             FROM lote_producto lp
-            JOIN producto p ON lp.id_producto = p.id_producto
+            JOIN producto p ON lp.codigo_producto = p.codigo
         `);
         console.table(lotes.rows);
 

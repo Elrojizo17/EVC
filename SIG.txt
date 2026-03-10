@@ -1,0 +1,238 @@
+SISTEMA DE INFORMACIÓN GEOGRÁFICO (SIG) - DOCUMENTACIÓN FUNCIONAL
+Proyecto: Gestión de Luminarias
+Fecha: 2026-03-02
+
+============================================================
+1) ¿POR QUÉ ESTE SISTEMA YA FUNCIONA COMO SIG?
+============================================================
+Este sistema se comporta como un SIG porque:
+
+1. Administra activos georreferenciados (luminarias con coordenadas).
+2. Los representa en un mapa base (OpenStreetMap) con simbología temática.
+3. Permite filtrar entidades por atributos (tecnología, número, rangos).
+4. Relaciona información alfanumérica (estado, potencia, tecnología) con su ubicación espacial.
+
+En términos prácticos, ya es un SIG operativo de consulta y visualización geográfica.
+
+------------------------------------------------------------
+Nivel SIG actual
+------------------------------------------------------------
+- Sí tiene:
+  - Visualización de puntos en mapa.
+  - Filtros temáticos y por atributos.
+  - Consulta puntual por elemento (mini mapa).
+
+- Aún no implementado (si se quiere evolucionar):
+  - Análisis espacial avanzado (buffers, proximidad, zonas de cobertura).
+  - Capas externas GIS (WMS/WFS, GeoJSON de barrios/comunas).
+  - Edición geográfica directa sobre el mapa.
+
+
+============================================================
+2) ARQUITECTURA SIG EN ESTE PROYECTO
+============================================================
+El flujo geográfico es:
+
+[Base de datos (tabla luminaria)]
+        ↓
+[Backend API /api/luminarias]
+        ↓
+[Frontend React + Leaflet]
+        ↓
+[Mapa con marcadores, popups y filtros]
+
+
+============================================================
+3) RUTAS DE ARCHIVOS (DÓNDE SE MANEJA EL SIG)
+============================================================
+
+A) FRONTEND (Leaflet / React-Leaflet)
+-------------------------------------
+1. Mapa principal:
+   - frontend/src/components/MapView.jsx
+
+2. Mini mapa por número de lámpara:
+   - frontend/src/components/MiniMapaLuminaria.jsx
+
+3. Página que renderiza el mapa principal y filtros:
+   - frontend/src/pages/Dashboard.jsx
+
+4. Página que renderiza mini mapa en registro de novedad:
+   - frontend/src/pages/NovedadCenso.jsx
+
+5. Dependencias Leaflet:
+   - frontend/package.json
+
+
+B) BACKEND (Fuente de datos geográficos)
+----------------------------------------
+1. Registro de rutas API:
+   - backend/server.js
+
+2. Endpoint que entrega luminarias con coordenadas:
+   - backend/routes/luminaria.routes.js
+
+
+============================================================
+4) CÓMO FUNCIONA LEAFLET EN TU SISTEMA (PASO A PASO)
+============================================================
+
+PASO 1: El frontend solicita luminarias al backend
+--------------------------------------------------
+Componente principal: frontend/src/components/MapView.jsx
+
+- Se usa axios para llamar:
+  http://localhost:3000/api/luminarias
+
+- La función que consulta datos es getLuminarias().
+- El resultado esperado es un arreglo de luminarias.
+
+
+PASO 2: El backend devuelve datos geográficos
+---------------------------------------------
+Endpoint: backend/routes/luminaria.routes.js
+
+- Ruta GET "/" dentro de luminaria.routes.
+- En backend/server.js se monta como:
+  app.use("/api/luminarias", luminariaRoutes)
+
+- SQL importante:
+  SELECT *, coord_x AS latitud, coord_y AS longitud FROM luminaria
+
+Esto significa que el backend transforma los campos de BD para que el frontend
+los reciba con nombres esperados por el mapa: latitud y longitud.
+
+
+PASO 3: Validación y filtrado de entidades en frontend
+------------------------------------------------------
+Archivo: frontend/src/components/MapView.jsx
+
+Antes de pintar, el componente filtra:
+- Coordenadas válidas (lat/lng numéricas).
+- Filtro por tecnología (LED, sodio, metal halide o todas).
+- Búsqueda por número de lámpara.
+- Rango numérico mínimo y máximo de lámparas.
+
+Esto evita dibujar datos inválidos y permite análisis visual dirigido.
+
+
+PASO 4: Render cartográfico con Leaflet
+---------------------------------------
+Archivo: frontend/src/components/MapView.jsx
+
+Elementos Leaflet usados:
+- MapContainer: contenedor del mapa.
+- TileLayer: capa base OpenStreetMap.
+- CircleMarker: símbolo para cada luminaria.
+- Popup: ventana emergente con atributos.
+
+Parámetros cartográficos relevantes:
+- Centro inicial: [4.334, -75.826] (Caicedonia).
+- Zoom inicial: 14.
+- Render Canvas activado para mejor rendimiento:
+  preferCanvas={true} y renderer={L.canvas(...)}.
+
+
+PASO 5: Simbología temática por tecnología
+------------------------------------------
+Archivo: frontend/src/components/MapView.jsx
+y también frontend/src/components/MiniMapaLuminaria.jsx
+
+Función: getColorByTecnologia(tecnologia)
+- LED -> azul
+- METAL HALIDE -> verde
+- SODIO -> rojo
+- Otros -> púrpura
+
+Este estilo por categorías convierte el mapa en un mapa temático,
+clave en sistemas SIG para lectura rápida de patrones.
+
+
+PASO 6: Consulta espacial puntual (mini mapa)
+---------------------------------------------
+Archivo: frontend/src/components/MiniMapaLuminaria.jsx
+Uso desde: frontend/src/pages/NovedadCenso.jsx
+
+- Cuando el usuario digita número de lámpara, el componente busca esa entidad.
+- Si existe y tiene coordenadas válidas, muestra un mapa centrado en ese punto.
+- Zoom cercano (17) para ubicación puntual.
+- Si no existe o no tiene coordenadas válidas, informa error en interfaz.
+
+Esto funciona como geolocalización puntual de un activo.
+
+
+============================================================
+5) ¿QUÉ DATOS ESPACIALES USA EL SISTEMA?
+============================================================
+
+Datos espaciales directos:
+- latitud
+- longitud
+
+Datos descriptivos (atributos temáticos asociados al punto):
+- numero_lampara
+- tecnologia
+- potencia_w
+- estado
+- coord_x / coord_y (origen de latitud/longitud)
+
+Relación SIG:
+Geometría (punto) + atributos alfanuméricos = entidad geográfica consultable.
+
+
+============================================================
+6) COMPONENTES CLAVE Y RESPONSABILIDAD
+============================================================
+
+frontend/src/components/MapView.jsx
+- Orquesta mapa principal.
+- Consume API de luminarias.
+- Aplica filtros.
+- Dibuja marcadores y popups.
+- Muestra leyenda y conteo.
+
+frontend/src/components/MiniMapaLuminaria.jsx
+- Hace búsqueda puntual de una luminaria.
+- Muestra mini mapa de validación/consulta rápida.
+
+frontend/src/pages/Dashboard.jsx
+- Gestiona filtros UI (tecnología, búsqueda, rangos).
+- Pasa filtros al mapa principal.
+
+frontend/src/pages/NovedadCenso.jsx
+- Inserta mini mapa para validar ubicación durante el flujo de novedades.
+
+backend/routes/luminaria.routes.js
+- Expone datos de luminarias para frontend.
+- Mapea coord_x/coord_y a latitud/longitud.
+
+backend/server.js
+- Publica endpoint bajo /api/luminarias.
+
+
+============================================================
+7) OBSERVACIÓN TÉCNICA IMPORTANTE
+============================================================
+En MapView se escucha un evento de ventana:
+- 'luminariasActualizadas'
+
+Archivo:
+- frontend/src/components/MapView.jsx
+
+Actualmente hay listener para ese evento, pero no se encontró en frontend
+dónde se emite (dispatchEvent) dicho evento. Si se desea refresco en tiempo
+real al actualizar una luminaria, conviene implementar la emisión explícita
+al finalizar el proceso de actualización.
+
+
+============================================================
+8) CONCLUSIÓN EJECUTIVA (PARA COORDINACIÓN)
+============================================================
+Sí, el sistema ya cumple funciones de SIG de nivel operativo:
+- visualiza activos georreferenciados,
+- permite filtros temáticos y por atributos,
+- conecta datos operativos con ubicación espacial,
+- y soporta consulta geográfica puntual.
+
+No es aún un SIG analítico avanzado, pero técnicamente es correcto decir
+que el módulo de luminarias ya opera como un Sistema de Información Geográfico.

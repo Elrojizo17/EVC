@@ -1,14 +1,15 @@
 import { useEffect, useState, useMemo } from "react";
-import { getElectricistas } from "../api/electricistas.api";
+import { getElectricistas, updateElectricista } from "../api/electricistas.api";
 import { useNotification } from "../hooks/useNotification";
 import ElectristaForm from "./ElectristaForm";
 
 export default function ElectristaList() {
     const [electricistas, setElectricistas] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [updatingId, setUpdatingId] = useState(null);
     const [searchTerm, setSearchTerm] = useState("");
     const [showForm, setShowForm] = useState(false);
-    const { error: errorNotification } = useNotification();
+    const { success, error: errorNotification } = useNotification();
 
     useEffect(() => {
         cargarElectricistas();
@@ -39,6 +40,35 @@ export default function ElectristaList() {
     const handleCreated = (nuevo) => {
         setElectricistas((prev) => [...prev, nuevo].sort((a, b) => a.nombre.localeCompare(b.nombre)));
         setShowForm(false);
+    };
+
+    const handleToggleActivo = async (electricista) => {
+        const siguienteEstado = !Boolean(electricista.activo);
+        try {
+            setUpdatingId(electricista.id_electricista);
+            const actualizado = await updateElectricista(electricista.id_electricista, {
+                activo: siguienteEstado
+            });
+
+            setElectricistas((prev) =>
+                prev.map((item) =>
+                    item.id_electricista === electricista.id_electricista
+                        ? { ...item, activo: Boolean(actualizado?.activo) }
+                        : item
+                )
+            );
+
+            success(
+                siguienteEstado
+                    ? `${electricista.nombre} quedó disponible`
+                    : `${electricista.nombre} quedó no disponible`
+            );
+        } catch (err) {
+            console.error("Error actualizando estado del electricista:", err);
+            errorNotification("No se pudo actualizar la disponibilidad");
+        } finally {
+            setUpdatingId(null);
+        }
     };
 
     return (
@@ -134,16 +164,48 @@ export default function ElectristaList() {
                                         )}
                                     </div>
                                 </div>
-                                <div style={{
-                                    fontSize: "11px",
-                                    padding: "4px 8px",
-                                    borderRadius: "999px",
-                                    background: e.activo ? "#dcfce7" : "#fee2e2",
-                                    color: e.activo ? "#15803d" : "#b91c1c",
-                                    fontWeight: "500"
-                                }}>
-                                    {e.activo ? "Activo" : "Inactivo"}
-                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => handleToggleActivo(e)}
+                                    disabled={updatingId === e.id_electricista}
+                                    aria-label={e.activo ? "Marcar como no disponible" : "Marcar como disponible"}
+                                    title={e.activo ? "Disponible" : "No disponible"}
+                                    style={{
+                                        width: "80px",
+                                        height: "36px",
+                                        borderRadius: "999px",
+                                        border: "none",
+                                        background: e.activo ? "linear-gradient(90deg, #34d399 0%, #22c55e 100%)" : "#d1d5db",
+                                        position: "relative",
+                                        cursor: updatingId === e.id_electricista ? "not-allowed" : "pointer",
+                                        transition: "background 0.25s ease, opacity 0.2s ease",
+                                        opacity: updatingId === e.id_electricista ? 0.65 : 1,
+                                        padding: "0 10px",
+                                        textAlign: "left"
+                                    }}
+                                >
+                                    <span
+                                        style={{
+                                            position: "absolute",
+                                            top: "4px",
+                                            left: e.activo ? "46px" : "4px",
+                                            width: "28px",
+                                            height: "28px",
+                                            borderRadius: "50%",
+                                            background: "#ffffff",
+                                            boxShadow: "0 2px 6px rgba(0,0,0,0.24)",
+                                            transition: "left 0.25s ease"
+                                        }}
+                                    />
+                                    <span style={{
+                                        fontSize: "11px",
+                                        fontWeight: "700",
+                                        color: e.activo ? "#ecfdf5" : "#475569",
+                                        letterSpacing: "0.03em"
+                                    }}>
+                                        {updatingId === e.id_electricista ? "..." : e.activo ? "ON" : "OFF"}
+                                    </span>
+                                </button>
                             </div>
                         ))}
                     </div>

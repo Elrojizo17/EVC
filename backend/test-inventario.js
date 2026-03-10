@@ -8,7 +8,7 @@ async function testInventarioFlat() {
             `SELECT 
                 lp.id_lote,
                 lp.id_lote as id_inventario,
-                p.id_producto,
+                p.codigo as id_producto,
                 p.codigo as codigo_elemento,
                 p.nombre as elemento,
                 lp.anio_compra,
@@ -18,7 +18,7 @@ async function testInventarioFlat() {
                 lp.fecha_compra,
                 0 as cantidad_gastada
             FROM lote_producto lp
-            JOIN producto p ON lp.id_producto = p.id_producto
+            JOIN producto p ON lp.codigo_producto = p.codigo
             WHERE p.activo = TRUE
             ORDER BY p.nombre ASC`
         );

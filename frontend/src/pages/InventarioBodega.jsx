@@ -1,9 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import BackButton from "../components/BackButton";
 import { createElemento, getInventario, getHistorialElemento } from "../api/inventario.api";
+import { getUiConfig } from "../api/config.api";
 import { useNotification } from "../hooks/useNotification";
 import { useFormValidation, validationRules } from "../hooks/useFormValidation";
 import FormInput from "../components/FormInput";
+import { UMBRAL_STOCK_BAJO } from "../constants/inventario";
+import { getCostoTotalMovimiento } from "../utils/gastos";
+import * as XLSX from "xlsx";
 
 // Funciones de utilidad para manejo de moneda
 const formatCurrency = (value) => {
@@ -24,45 +28,62 @@ const parseCurrency = (value) => {
     return Number.isNaN(number) ? 0 : number;
 };
 
-const validations = {
-    codigo_elemento: [
-        validationRules.required,
-        validationRules.maxLength(30)
-    ],
-    elemento: [
-        validationRules.required,
-        validationRules.minLength(3),
-        validationRules.maxLength(100)
-    ],
-    cantidad: [
-        validationRules.required,
-        validationRules.number,
-        validationRules.min(0)
-    ],
-    costo_unitario: [
-        validationRules.required,
-        (value) => {
-            const num = parseCurrency(value);
-            if (isNaN(num) || num < 0) {
-                return 'Debe ser un costo válido mayor o igual a 0';
-            }
-            return '';
-        }
-    ],
-    fecha_compra: [
-        validationRules.required
-    ]
-};
-
 export default function InventarioBodega() {
     const [inventario, setInventario] = useState([]);
+    const [umbralStockBajo, setUmbralStockBajo] = useState(UMBRAL_STOCK_BAJO);
     const [busqueda, setBusqueda] = useState("");
     const [loading, setLoading] = useState(true);
     const [formLoading, setFormLoading] = useState(false);
     const [historialModal, setHistorialModal] = useState(null);
     const [historial, setHistorial] = useState([]);
     const [loadingHistorial, setLoadingHistorial] = useState(false);
+    const [ordenCodigo, setOrdenCodigo] = useState("asc");
     const { success, error: errorNotification } = useNotification();
+
+    const codigosExistentes = useMemo(() => {
+        return new Set(
+            (inventario || [])
+                .map((item) => String(item.codigo_elemento || "").trim().toLowerCase())
+                .filter(Boolean)
+        );
+    }, [inventario]);
+
+    const validations = useMemo(() => ({
+        codigo_elemento: [
+            validationRules.required,
+            (value) => {
+                const codigoNormalizado = String(value || "").trim().toLowerCase();
+                if (!codigoNormalizado) return "";
+                if (codigosExistentes.has(codigoNormalizado)) {
+                    return "El código del elemento ya existe";
+                }
+                return "";
+            }
+        ],
+        elemento: [
+            validationRules.required,
+            validationRules.minLength(3),
+            validationRules.maxLength(100)
+        ],
+        cantidad: [
+            validationRules.required,
+            validationRules.number,
+            validationRules.min(0)
+        ],
+        costo_unitario: [
+            validationRules.required,
+            (value) => {
+                const num = parseCurrency(value);
+                if (isNaN(num) || num < 0) {
+                    return 'Debe ser un costo válido mayor o igual a 0';
+                }
+                return '';
+            }
+        ],
+        fecha_compra: [
+            validationRules.required
+        ]
+    }), [codigosExistentes]);
 
     const {
         values: formData,
@@ -83,7 +104,20 @@ export default function InventarioBodega() {
 
     useEffect(() => {
         cargarInventario();
+        cargarConfigUi();
     }, []);
+
+    const cargarConfigUi = async () => {
+        try {
+            const config = await getUiConfig();
+            const umbral = Number(config?.stock_bajo_umbral);
+            if (Number.isFinite(umbral) && umbral > 0) {
+                setUmbralStockBajo(Math.floor(umbral));
+            }
+        } catch (err) {
+            console.warn("No se pudo cargar configuración UI, usando valor por defecto.", err);
+        }
+    };
 
     const cargarInventario = async () => {
         try {
@@ -158,7 +192,7 @@ export default function InventarioBodega() {
         try {
             setFormLoading(true);
             const datosEnvio = {
-                codigo_elemento: formData.codigo_elemento,
+                codigo_elemento: String(formData.codigo_elemento || "").trim(),
                 elemento: formData.elemento,
                 cantidad: parseInt(formData.cantidad),
                 costo_unitario: parseCurrency(formData.costo_unitario),
@@ -177,7 +211,12 @@ export default function InventarioBodega() {
             });
             cargarInventario();
         } catch (err) {
-            errorNotification(err.message || "Error al registrar el elemento. Verifica que el código sea único.");
+            const backendError = String(err?.error || err?.message || "");
+            if (backendError.toLowerCase().includes("ya existe")) {
+                errorNotification("El código del elemento ya existe");
+            } else {
+                errorNotification(err.message || "Error al registrar el elemento. Verifica que el código sea único.");
+            }
             console.error(err);
         } finally {
             setFormLoading(false);
@@ -198,13 +237,86 @@ export default function InventarioBodega() {
         }, 0);
     };
 
-    const inventarioFiltrado = (inventario || []).filter((item) => {
+    const inventarioFiltrado = useMemo(() => {
         const termino = busqueda.toLowerCase();
-        return (
-        item.codigo_elemento?.toLowerCase().includes(termino) ||
-        item.elemento?.toLowerCase().includes(termino)
-        );
-    });
+        const filtrado = (inventario || []).filter((item) => {
+            return (
+                item.codigo_elemento?.toLowerCase().includes(termino) ||
+                item.elemento?.toLowerCase().includes(termino)
+            );
+        });
+
+        return filtrado.sort((a, b) => {
+            const codigoA = String(a.codigo_elemento || "").toLowerCase();
+            const codigoB = String(b.codigo_elemento || "").toLowerCase();
+            const comparacion = codigoA.localeCompare(codigoB, "es", { numeric: true, sensitivity: "base" });
+            return ordenCodigo === "asc" ? comparacion : -comparacion;
+        });
+    }, [inventario, busqueda, ordenCodigo]);
+
+    const exportarInventarioExcel = () => {
+        if (inventarioFiltrado.length === 0) {
+            errorNotification("No hay datos para exportar con los filtros actuales");
+            return;
+        }
+
+        const dataExcel = inventarioFiltrado.map((item) => {
+            const stockDisponible = Number(item.stock_disponible || 0);
+            return {
+                "Código": item.codigo_elemento || "",
+                "Material": item.elemento || "",
+                "Inicial": Number(item.cantidad || 0),
+                "Entrada": Number(item.entrada || 0),
+                "Devolución": Number(item.devolucion || 0),
+                "Despachado": Number(item.despachado || 0),
+                "Material excedente": Number(item.material_excedente || 0),
+                "Préstamo": Number(item.prestamo || 0),
+                "Unid. existentes inventario": stockDisponible,
+                "Costo unitario": Number(item.costo_unitario || 0),
+                "Valor final": stockDisponible * Number(item.costo_unitario || 0)
+            };
+        });
+
+        const ws = XLSX.utils.json_to_sheet(dataExcel);
+
+        const formatoMoneda = '"$" #,##0.00';
+        for (let rowIndex = 0; rowIndex < dataExcel.length; rowIndex += 1) {
+            const rowExcel = rowIndex + 1;
+            const cellCostoUnitario = XLSX.utils.encode_cell({ r: rowExcel, c: 9 });
+            const cellValorFinal = XLSX.utils.encode_cell({ r: rowExcel, c: 10 });
+
+            if (ws[cellCostoUnitario]) {
+                ws[cellCostoUnitario].t = "n";
+                ws[cellCostoUnitario].z = formatoMoneda;
+            }
+
+            if (ws[cellValorFinal]) {
+                ws[cellValorFinal].t = "n";
+                ws[cellValorFinal].z = formatoMoneda;
+            }
+        }
+
+        ws["!cols"] = [
+            { wch: 16 },
+            { wch: 40 },
+            { wch: 10 },
+            { wch: 10 },
+            { wch: 12 },
+            { wch: 12 },
+            { wch: 18 },
+            { wch: 10 },
+            { wch: 24 },
+            { wch: 14 },
+            { wch: 14 }
+        ];
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Inventario");
+
+        const fecha = new Date().toISOString().split("T")[0];
+        XLSX.writeFile(wb, `inventario_${fecha}.xlsx`);
+        success("Inventario exportado a Excel");
+    };
 
         return (
 		<div style={{ padding: "20px", maxWidth: "1400px", margin: "0 auto" }}>
@@ -328,21 +440,38 @@ export default function InventarioBodega() {
                 Inventario actual ({(inventario || []).length} elementos)
             </h3>
 
-            <div style={{ marginBottom: "16px" }}>
+            <div style={{ marginBottom: "16px", display: "grid", gridTemplateColumns: "1fr auto", gap: "10px" }}>
                 <input
-                type="text"
-                placeholder="Buscar por código o elemento..."
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                style={{
-                    width: "100%",
-                    padding: "10px 12px",
-                    border: "1px solid #e2e8f0",
-                    borderRadius: "8px",
-                    fontSize: "13px",
-                    boxSizing: "border-box"
-                }}
+                    type="text"
+                    placeholder="Buscar por código o elemento..."
+                    value={busqueda}
+                    onChange={(e) => setBusqueda(e.target.value)}
+                    style={{
+                        width: "100%",
+                        padding: "10px 12px",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: "8px",
+                        fontSize: "13px",
+                        boxSizing: "border-box"
+                    }}
                 />
+                <button
+                    type="button"
+                    onClick={exportarInventarioExcel}
+                    style={{
+                        padding: "10px 14px",
+                        background: "#0f7c90",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "8px",
+                        cursor: "pointer",
+                        fontWeight: "600",
+                        fontSize: "12px",
+                        whiteSpace: "nowrap"
+                    }}
+                >
+                    Exportar Excel
+                </button>
             </div>
 
             {loading ? (
@@ -355,7 +484,37 @@ export default function InventarioBodega() {
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
                     <thead>
                         <tr style={{ borderBottom: "2px solid #e2e8f0", background: "#f8fafc" }}>
-                            <th style={headerStyle}>Código</th>
+                            <th style={headerStyle}>
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                                    Código
+                                    <button
+                                        type="button"
+                                        title={ordenCodigo === "asc" ? "Orden actual: ascendente" : "Orden actual: descendente"}
+                                        onClick={() => setOrdenCodigo((prev) => (prev === "asc" ? "desc" : "asc"))}
+                                        style={{
+                                            width: "24px",
+                                            height: "24px",
+                                            border: "1px solid #cbd5e1",
+                                            borderRadius: "6px",
+                                            background: "white",
+                                            color: "#0f172a",
+                                            cursor: "pointer",
+                                            padding: 0,
+                                            display: "inline-flex",
+                                            alignItems: "center",
+                                            justifyContent: "center"
+                                        }}
+                                    >
+                                        <span style={{ display: "inline-flex", alignItems: "center", gap: "1px", fontSize: "9px", lineHeight: 1 }}>
+                                            <span style={{ display: "inline-flex", flexDirection: "column", lineHeight: 0.8 }}>
+                                                <span>A</span>
+                                                <span>Z</span>
+                                            </span>
+                                            <span style={{ fontSize: "10px" }}>{ordenCodigo === "asc" ? "↓" : "↑"}</span>
+                                        </span>
+                                    </button>
+                                </span>
+                            </th>
                             <th style={headerStyle}>Material</th>
                             <th style={headerStyle}>Inicial</th>
                             <th style={headerStyle}>Entrada</th>
@@ -364,6 +523,7 @@ export default function InventarioBodega() {
                             <th style={headerStyle}>Material excedente</th>
                             <th style={headerStyle}>Préstamo</th>
                             <th style={headerStyle}>Unid. existentes inventario</th>
+                            <th style={headerStyle}>Costo unitario</th>
                             <th style={headerStyle}>Valor final</th>
                             <th style={headerStyle}>Acciones</th>
                         </tr>
@@ -371,13 +531,13 @@ export default function InventarioBodega() {
                     <tbody>
                         {inventarioFiltrado.map((item) => {
                             const stockDisponible = Number(item.stock_disponible || 0);
-                            const stockBajo = stockDisponible < 10;
+                            const stockBajo = stockDisponible < umbralStockBajo;
                             const stockAgotado = stockDisponible <= 0;
                             
                             return (
                                 <tr key={item.id_inventario} style={{ 
                                     borderBottom: "1px solid #e2e8f0",
-                                    background: stockAgotado ? "#fff1f2" : stockBajo ? "#fff7ed" : "transparent"
+                                    background: stockAgotado ? "#fee2e2" : stockBajo ? "#fef2f2" : "transparent"
                                 }}>
                                     <td style={cellStyle}>{item.codigo_elemento}</td>
                                     <td style={cellStyle}>{item.elemento}</td>
@@ -389,14 +549,14 @@ export default function InventarioBodega() {
                                     <td style={cellStyle}>{Number(item.prestamo || 0)}</td>
                                     <td style={{...cellStyle, fontWeight: "bold", fontSize: "15px"}}>
                                         <span style={{
-                                            color: stockAgotado ? "#dc2626" : stockBajo ? "#ea580c" : "#059669",
+                                            color: stockAgotado ? "#b91c1c" : stockBajo ? "#ef4444" : "#059669",
                                             display: "flex",
                                             alignItems: "center",
                                             gap: "4px"
                                         }}>
                                             {stockDisponible}
                                             {stockAgotado && <span style={{ fontSize: "10px" }}>⚠️ AGOTADO</span>}
-                                            {stockBajo && !stockAgotado && <span style={{ fontSize: "10px" }}>⚠️ BAJO</span>}
+                                            {stockBajo && !stockAgotado && <span style={{ fontSize: "10px" }}>⚠️ AGOTÁNDOSE</span>}
                                         </span>
                                     </td>
                                     <td style={cellStyle}>${formatCurrency(item.costo_unitario)}</td>
@@ -570,7 +730,9 @@ export default function InventarioBodega() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {historial.map((h) => (
+                                    {historial.map((h) => {
+                                        const costoTotalMovimiento = getCostoTotalMovimiento(h);
+                                        return (
                                         <tr key={h.id_gasto} style={{ borderBottom: "1px solid #e2e8f0" }}>
                                             <td style={cellStyle}>
                                                 {new Date(h.fecha).toLocaleDateString('es-ES', {
@@ -579,16 +741,17 @@ export default function InventarioBodega() {
                                                     day: 'numeric'
                                                 })}
                                             </td>
-                                            <td style={cellStyle}>{h.numero_lampara ? `#${h.numero_lampara}` : "-"}</td>
+                                            <td style={cellStyle}>{h.numero_lampara ? `#${h.numero_lampara}` : "Sin lámpara asociada"}</td>
                                             <td style={cellStyle}>{h.nombre_electricista || (h.id_electricista ? `ID ${h.id_electricista}` : "-")}</td>
                                             <td style={cellStyle}>{h.tipo_movimiento}</td>
                                             <td style={cellStyle}>{h.cantidad_usada}</td>
                                             <td style={cellStyle}>${formatCurrency(h.costo_unitario)}</td>
-                                            <td style={cellStyle}>${formatCurrency(Number(h.cantidad_usada || 0) * Number(h.costo_unitario || 0))}</td>
+                                            <td style={{ ...cellStyle, color: costoTotalMovimiento < 0 ? "#b91c1c" : "#475569" }}>${formatCurrency(costoTotalMovimiento)}</td>
                                             <td style={cellStyle}>{h.codigo_pqr || "-"}</td>
                                             <td style={cellStyle}>{h.observacion || "-"}</td>
                                         </tr>
-                                    ))}
+                                    );
+                                    })}
                                 </tbody>
                             </table>
 
@@ -608,9 +771,7 @@ export default function InventarioBodega() {
                                 </div>
                                 <div style={{ fontSize: "20px", fontWeight: "bold", color: "#0f7c90" }}>
                                     ${formatCurrency(historial.reduce((sum, h) => {
-                                        const cant = Number(h.cantidad_usada || 0);
-                                        const costo = Number(h.costo_unitario || 0);
-                                        return sum + (cant * costo);
+                                        return sum + getCostoTotalMovimiento(h);
                                     }, 0))}
                                 </div>
                             </div>

@@ -7,7 +7,7 @@ exports.getInventarioFlat = async (req, res) => {
             `SELECT 
                 lp.id_lote,
                 lp.id_lote as id_inventario,
-                p.id_producto,
+                p.codigo as id_producto,
                 p.codigo as codigo_elemento,
                 p.nombre as elemento,
                 lp.anio_compra,
@@ -20,19 +20,23 @@ exports.getInventarioFlat = async (req, res) => {
                 COALESCE(mov.despachado, 0) as despachado,
                 COALESCE(mov.material_excedente, 0) as material_excedente,
                 COALESCE(mov.prestamo, 0)  as prestamo,
-                -- cantidad total movida (suma de todos los tipos)
-                COALESCE(mov.total_movida, 0) as cantidad_gastada,
+                -- cantidad gastada neta: salidas - devoluciones
+                GREATEST(
+                    COALESCE(mov.total_salidas, 0) - COALESCE(mov.total_devolucion, 0),
+                    0
+                ) as cantidad_gastada,
                 -- stock disponible: inicial - salidas + entradas
                 GREATEST(
                     lp.cantidad - COALESCE(mov.salidas, 0) + COALESCE(mov.entradas, 0),
                     0
                 ) as stock_disponible
             FROM lote_producto lp
-            JOIN producto p ON lp.id_producto = p.id_producto
+            JOIN producto p ON lp.codigo_producto = p.codigo
             LEFT JOIN (
                 SELECT 
                     id_lote,
-                    SUM(cantidad) as total_movida,
+                    SUM(CASE WHEN tipo_movimiento IN ('DESPACHADO','PRESTADO','MATERIAL_EXCEDENTE') THEN cantidad ELSE 0 END) as total_salidas,
+                    SUM(CASE WHEN tipo_movimiento = 'DEVOLUCION' THEN cantidad ELSE 0 END) as total_devolucion,
                     SUM(CASE WHEN tipo_movimiento IN ('DESPACHADO','PRESTADO','MATERIAL_EXCEDENTE') THEN cantidad ELSE 0 END) as salidas,
                     SUM(CASE WHEN tipo_movimiento IN ('ENTRADA','DEVOLUCION') THEN cantidad ELSE 0 END) as entradas,
                     SUM(CASE WHEN tipo_movimiento = 'ENTRADA' THEN cantidad ELSE 0 END) as entrada,
@@ -58,13 +62,14 @@ exports.getProductosConLotes = async (req, res) => {
     try {
         const result = await pool.query(
             `SELECT 
-                p.id_producto,
+                p.codigo as id_producto,
                 p.codigo,
                 p.nombre,
                 p.activo,
                 json_agg(
                     json_build_object(
                         'id_lote', lp.id_lote,
+                        'codigo_producto', lp.codigo_producto,
                         'anio_compra', lp.anio_compra,
                         'precio_unitario', lp.precio_unitario,
                         'cantidad', lp.cantidad,
@@ -72,9 +77,9 @@ exports.getProductosConLotes = async (req, res) => {
                     ) ORDER BY lp.fecha_compra DESC
                 ) FILTER (WHERE lp.id_lote IS NOT NULL) as lotes
             FROM producto p
-            LEFT JOIN lote_producto lp ON p.id_producto = lp.id_producto
+            LEFT JOIN lote_producto lp ON p.codigo = lp.codigo_producto
             WHERE p.activo = TRUE
-            GROUP BY p.id_producto
+            GROUP BY p.codigo, p.nombre, p.activo
             ORDER BY p.nombre ASC`
         );
         res.json(result.rows);
@@ -103,7 +108,7 @@ exports.getMovimientos = async (req, res) => {
                 n.numero_lampara
             FROM movimiento_bodega mb
             JOIN lote_producto lp ON mb.id_lote = lp.id_lote
-            JOIN producto p ON lp.id_producto = p.id_producto
+            JOIN producto p ON lp.codigo_producto = p.codigo
             LEFT JOIN novedad_luminaria n ON mb.id_novedad_luminaria = n.id_novedad
             ORDER BY mb.fecha DESC
             LIMIT 100`
@@ -126,7 +131,7 @@ exports.getLoteDetalle = async (req, res) => {
                 lp.precio_unitario,
                 lp.cantidad,
                 lp.fecha_compra,
-                p.id_producto,
+                p.codigo as id_producto,
                 p.codigo,
                 p.nombre,
                 COALESCE(
@@ -134,7 +139,7 @@ exports.getLoteDetalle = async (req, res) => {
                     0
                 ) as cantidad_movida
             FROM lote_producto lp
-            JOIN producto p ON lp.id_producto = p.id_producto
+            JOIN producto p ON lp.codigo_producto = p.codigo
             WHERE lp.id_lote = $1`,
             [id_lote]
         );
@@ -203,7 +208,7 @@ exports.createProducto = async (req, res) => {
         const result = await pool.query(
             `INSERT INTO producto (codigo, nombre, activo)
             VALUES ($1, $2, TRUE)
-            RETURNING id_producto, codigo, nombre, activo`,
+            RETURNING codigo as id_producto, codigo, nombre, activo`,
             [codigo, nombre]
         );
         res.status(201).json(result.rows[0]);
@@ -218,9 +223,10 @@ exports.createProducto = async (req, res) => {
 
 // POST create new lot
 exports.createLote = async (req, res) => {
-    const { id_producto, anio_compra, precio_unitario, cantidad, fecha_compra } = req.body;
+    const { id_producto, codigo_producto, anio_compra, precio_unitario, cantidad, fecha_compra } = req.body;
+    const codigoProducto = (codigo_producto ?? id_producto ?? "").toString().trim();
 
-    if (!id_producto || !anio_compra || !precio_unitario || !cantidad || !fecha_compra) {
+    if (!codigoProducto || !anio_compra || !precio_unitario || !cantidad || !fecha_compra) {
         return res.status(400).json({ error: "All fields are required" });
     }
 
@@ -231,8 +237,8 @@ exports.createLote = async (req, res) => {
     try {
         // Verify product exists
         const prodCheck = await pool.query(
-            "SELECT id_producto FROM producto WHERE id_producto = $1",
-            [id_producto]
+            "SELECT codigo FROM producto WHERE codigo = $1",
+            [codigoProducto]
         );
 
         if (prodCheck.rows.length === 0) {
@@ -240,10 +246,10 @@ exports.createLote = async (req, res) => {
         }
 
         const result = await pool.query(
-            `INSERT INTO lote_producto (id_producto, anio_compra, precio_unitario, cantidad, fecha_compra)
+            `INSERT INTO lote_producto (codigo_producto, anio_compra, precio_unitario, cantidad, fecha_compra)
             VALUES ($1, $2, $3, $4, $5)
-            RETURNING id_lote, id_producto, anio_compra, precio_unitario, cantidad, fecha_compra`,
-            [id_producto, anio_compra, precio_unitario, cantidad, fecha_compra]
+            RETURNING id_lote, codigo_producto as id_producto, codigo_producto, anio_compra, precio_unitario, cantidad, fecha_compra`,
+            [codigoProducto, anio_compra, precio_unitario, cantidad, fecha_compra]
         );
 
         res.status(201).json(result.rows[0]);
@@ -277,26 +283,25 @@ exports.createElemento = async (req, res) => {
     try {
         await client.query('BEGIN');
 
-        // Step 1: Create or check if product exists
-        let productoId;
+        // Step 1: Validate product code uniqueness
         const prodCheck = await client.query(
-            "SELECT id_producto FROM producto WHERE codigo = $1",
-            [codigo_elemento]
+            "SELECT codigo FROM producto WHERE codigo = $1",
+            [codigoTrim]
         );
 
         if (prodCheck.rows.length > 0) {
-            // Product exists, use its ID
-            productoId = prodCheck.rows[0].id_producto;
-        } else {
-            // Create new product
-            const prodResult = await client.query(
-                `INSERT INTO producto (codigo, nombre, activo)
-                VALUES ($1, $2, TRUE)
-                RETURNING id_producto`,
-                [codigoTrim, elementoTrim]
-            );
-            productoId = prodResult.rows[0].id_producto;
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: "El código del elemento ya existe" });
         }
+
+        // Step 2: Create product
+        const prodResult = await client.query(
+            `INSERT INTO producto (codigo, nombre, activo)
+            VALUES ($1, $2, TRUE)
+            RETURNING codigo`,
+            [codigoTrim, elementoTrim]
+        );
+        const codigoProducto = prodResult.rows[0].codigo;
 
         // Get purchase year from fecha_compra (string "YYYY-MM-DD")
         let anioCompra;
@@ -308,19 +313,20 @@ exports.createElemento = async (req, res) => {
             anioCompra = new Date().getFullYear();
         }
 
-        // Step 2: Create lot
+        // Step 3: Create lot
         const loteResult = await client.query(
-            `INSERT INTO lote_producto (id_producto, anio_compra, precio_unitario, cantidad, fecha_compra)
+            `INSERT INTO lote_producto (codigo_producto, anio_compra, precio_unitario, cantidad, fecha_compra)
             VALUES ($1, $2, $3, $4, $5)
-            RETURNING id_lote, id_producto, anio_compra, precio_unitario, cantidad, fecha_compra`,
-            [productoId, anioCompra, costo_unitario, cantidad, fecha_compra]
+            RETURNING id_lote, codigo_producto as id_producto, codigo_producto, anio_compra, precio_unitario, cantidad, fecha_compra`,
+            [codigoProducto, anioCompra, costo_unitario, cantidad, fecha_compra]
         );
 
         await client.query('COMMIT');
 
         res.status(201).json({
             id_lote: loteResult.rows[0].id_lote,
-            id_producto: productoId,
+            id_producto: codigoProducto,
+            codigo_producto: codigoProducto,
             codigo: codigo_elemento,
             nombre: elemento,
             anio_compra: anioCompra,

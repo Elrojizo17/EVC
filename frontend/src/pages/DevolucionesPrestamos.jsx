@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import BackButton from "../components/BackButton";
 import { getInventario } from "../api/inventario.api";
 import { getElectricistas } from "../api/electricistas.api";
@@ -36,8 +36,11 @@ export default function DevolucionesPrestamos() {
     const [electricistas, setElectricistas] = useState([]);
     const [movimientos, setMovimientos] = useState([]);
     const [despachos, setDespachos] = useState([]);
+    const [busquedaDespacho, setBusquedaDespacho] = useState("");
     const [despachoSeleccionadoId, setDespachoSeleccionadoId] = useState("");
     const [despachoSeleccionado, setDespachoSeleccionado] = useState(null);
+    const [ordenCodigoDespachos, setOrdenCodigoDespachos] = useState("asc");
+    const [ordenCodigoMovimientos, setOrdenCodigoMovimientos] = useState("asc");
     const [loading, setLoading] = useState(false);
     const [submitLoading, setSubmitLoading] = useState(false);
     const { success, error: errorNotification } = useNotification();
@@ -102,11 +105,13 @@ export default function DevolucionesPrestamos() {
         const { value } = event.target;
 
         if (value !== "DEVOLUCION") {
+            setBusquedaDespacho("");
             setDespachoSeleccionadoId("");
             setDespachoSeleccionado(null);
             return;
         }
 
+        setBusquedaDespacho("");
         setDespachoSeleccionadoId("");
         setDespachoSeleccionado(null);
         setValues((prev) => ({
@@ -116,8 +121,7 @@ export default function DevolucionesPrestamos() {
         }));
     };
 
-    const handleDespachoChange = (event) => {
-        const { value } = event.target;
+    const seleccionarDespacho = (value) => {
         setDespachoSeleccionadoId(value);
         if (!value) {
             setDespachoSeleccionado(null);
@@ -264,9 +268,41 @@ export default function DevolucionesPrestamos() {
         }
     };
 
-    const movimientosOrdenados = [...movimientos].sort((a, b) => {
-        return new Date(b.fecha) - new Date(a.fecha);
-    });
+    const movimientosOrdenados = useMemo(() => {
+        const lista = [...movimientos];
+        return lista.sort((a, b) => {
+            const codigoA = String(a.codigo || a.codigo_elemento || a.elemento || "").toLowerCase();
+            const codigoB = String(b.codigo || b.codigo_elemento || b.elemento || "").toLowerCase();
+            const comparacion = codigoA.localeCompare(codigoB, "es", { numeric: true, sensitivity: "base" });
+            return ordenCodigoMovimientos === "asc" ? comparacion : -comparacion;
+        });
+    }, [movimientos, ordenCodigoMovimientos]);
+
+    const despachosFiltrados = useMemo(() => {
+        const termino = (busquedaDespacho || "").toLowerCase().trim();
+        const filtrados = !termino ? despachos : despachos.filter((d) => {
+            const texto = [
+                d.elemento,
+                d.codigo,
+                d.codigo_pqr,
+                d.numero_lampara,
+                d.nombre_electricista,
+                d.id_gasto
+            ]
+                .filter(Boolean)
+                .join(" ")
+                .toLowerCase();
+
+            return texto.includes(termino);
+        });
+
+        return [...filtrados].sort((a, b) => {
+            const codigoA = String(a.codigo || a.codigo_elemento || a.elemento || "").toLowerCase();
+            const codigoB = String(b.codigo || b.codigo_elemento || b.elemento || "").toLowerCase();
+            const comparacion = codigoA.localeCompare(codigoB, "es", { numeric: true, sensitivity: "base" });
+            return ordenCodigoDespachos === "asc" ? comparacion : -comparacion;
+        });
+    }, [despachos, busquedaDespacho, ordenCodigoDespachos]);
 
     // Saldos de préstamo por lote (PRESTADO - DEVOLUCION)
     const saldoPrestamoPorLote = movimientos.reduce((mapa, m) => {
@@ -335,19 +371,109 @@ export default function DevolucionesPrestamos() {
                         {formMovimiento.tipo_movimiento === "DEVOLUCION" && (
                             <div style={{ marginBottom: "15px" }}>
                                 <label style={labelStyle}>Despacho a devolver *</label>
-                                <select
-                                    value={despachoSeleccionadoId}
-                                    onChange={handleDespachoChange}
-                                    style={inputStyle}
-                                    disabled={submitLoading}
-                                >
-                                    <option value="">Selecciona un despacho registrado</option>
-                                    {despachos.map((d) => (
-                                        <option key={d.id_gasto} value={d.id_gasto}>
-                                            {new Date(d.fecha).toLocaleDateString()} · {d.elemento} · Cant: {d.cantidad_usada}
-                                        </option>
-                                    ))}
-                                </select>
+                                <div style={{ marginBottom: "8px" }}>
+                                    <input
+                                        type="text"
+                                        value={busquedaDespacho}
+                                        onChange={(e) => setBusquedaDespacho(e.target.value)}
+                                        placeholder="Buscar despacho por elemento, PQR, lámpara o electricista..."
+                                        style={inputStyle}
+                                        disabled={submitLoading}
+                                    />
+                                </div>
+                                <div style={{ border: "1px solid #e2e8f0", borderRadius: "8px", overflow: "hidden" }}>
+                                    <div style={{ maxHeight: "220px", overflowY: "auto" }}>
+                                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+                                            <thead>
+                                                <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                                                    <th style={{ ...headerStyle, padding: "6px 8px" }}>Fecha</th>
+                                                    <th style={{ ...headerStyle, padding: "6px 8px" }}>
+                                                        <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                                                            Elemento
+                                                            <button
+                                                                type="button"
+                                                                title={ordenCodigoDespachos === "asc" ? "Orden actual: ascendente" : "Orden actual: descendente"}
+                                                                onClick={() => setOrdenCodigoDespachos((prev) => (prev === "asc" ? "desc" : "asc"))}
+                                                                disabled={submitLoading}
+                                                                style={{
+                                                                    width: "20px",
+                                                                    height: "20px",
+                                                                    border: "1px solid #cbd5e1",
+                                                                    borderRadius: "5px",
+                                                                    background: "white",
+                                                                    color: "#0f172a",
+                                                                    cursor: submitLoading ? "not-allowed" : "pointer",
+                                                                    opacity: submitLoading ? 0.6 : 1,
+                                                                    padding: 0,
+                                                                    display: "inline-flex",
+                                                                    alignItems: "center",
+                                                                    justifyContent: "center"
+                                                                }}
+                                                            >
+                                                                <span style={{ display: "inline-flex", alignItems: "center", gap: "1px", fontSize: "8px", lineHeight: 1 }}>
+                                                                    <span style={{ display: "inline-flex", flexDirection: "column", lineHeight: 0.8 }}>
+                                                                        <span>A</span>
+                                                                        <span>Z</span>
+                                                                    </span>
+                                                                    <span style={{ fontSize: "9px" }}>{ordenCodigoDespachos === "asc" ? "↓" : "↑"}</span>
+                                                                </span>
+                                                            </button>
+                                                        </span>
+                                                    </th>
+                                                    <th style={{ ...headerStyle, padding: "6px 8px" }}>Cant.</th>
+                                                    <th style={{ ...headerStyle, padding: "6px 8px" }}>PQR</th>
+                                                    <th style={{ ...headerStyle, padding: "6px 8px" }}>Seleccionar</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {despachosFiltrados.length === 0 ? (
+                                                    <tr>
+                                                        <td style={{ ...cellStyle, padding: "8px", color: "#94a3b8" }} colSpan={5}>
+                                                            No se encontraron despachos con ese criterio.
+                                                        </td>
+                                                    </tr>
+                                                ) : (
+                                                    despachosFiltrados.map((d) => {
+                                                        const seleccionado = String(despachoSeleccionadoId) === String(d.id_gasto);
+                                                        return (
+                                                            <tr
+                                                                key={d.id_gasto}
+                                                                style={{
+                                                                    borderBottom: "1px solid #e2e8f0",
+                                                                    background: seleccionado ? "#f0f9ff" : "white"
+                                                                }}
+                                                            >
+                                                                <td style={{ ...cellStyle, padding: "6px 8px" }}>{new Date(d.fecha).toLocaleDateString()}</td>
+                                                                <td style={{ ...cellStyle, padding: "6px 8px" }}>{d.elemento}</td>
+                                                                <td style={{ ...cellStyle, padding: "6px 8px" }}>{d.cantidad_usada}</td>
+                                                                <td style={{ ...cellStyle, padding: "6px 8px" }}>{d.codigo_pqr || "-"}</td>
+                                                                <td style={{ ...cellStyle, padding: "6px 8px" }}>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => seleccionarDespacho(String(d.id_gasto))}
+                                                                        disabled={submitLoading}
+                                                                        style={{
+                                                                            border: "none",
+                                                                            borderRadius: "6px",
+                                                                            padding: "6px 10px",
+                                                                            cursor: submitLoading ? "not-allowed" : "pointer",
+                                                                            background: seleccionado ? "#0f7c90" : "#e2e8f0",
+                                                                            color: seleccionado ? "white" : "#0f172a",
+                                                                            fontSize: "11px",
+                                                                            fontWeight: "600"
+                                                                        }}
+                                                                    >
+                                                                        {seleccionado ? "Seleccionado" : "Seleccionar"}
+                                                                    </button>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
                                 {despachoSeleccionado && (
                                     <div style={{
                                         marginTop: "10px",
@@ -522,7 +648,37 @@ export default function DevolucionesPrestamos() {
                                     <thead>
                                         <tr style={{ borderBottom: "2px solid #e2e8f0", background: "#f8fafc" }}>
                                             <th style={headerStyle}>Fecha</th>
-                                            <th style={headerStyle}>Elemento</th>
+                                            <th style={headerStyle}>
+                                                <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                                                    Elemento
+                                                    <button
+                                                        type="button"
+                                                        title={ordenCodigoMovimientos === "asc" ? "Orden actual: ascendente" : "Orden actual: descendente"}
+                                                        onClick={() => setOrdenCodigoMovimientos((prev) => (prev === "asc" ? "desc" : "asc"))}
+                                                        style={{
+                                                            width: "20px",
+                                                            height: "20px",
+                                                            border: "1px solid #cbd5e1",
+                                                            borderRadius: "5px",
+                                                            background: "white",
+                                                            color: "#0f172a",
+                                                            cursor: "pointer",
+                                                            padding: 0,
+                                                            display: "inline-flex",
+                                                            alignItems: "center",
+                                                            justifyContent: "center"
+                                                        }}
+                                                    >
+                                                        <span style={{ display: "inline-flex", alignItems: "center", gap: "1px", fontSize: "8px", lineHeight: 1 }}>
+                                                            <span style={{ display: "inline-flex", flexDirection: "column", lineHeight: 0.8 }}>
+                                                                <span>A</span>
+                                                                <span>Z</span>
+                                                            </span>
+                                                            <span style={{ fontSize: "9px" }}>{ordenCodigoMovimientos === "asc" ? "↓" : "↑"}</span>
+                                                        </span>
+                                                    </button>
+                                                </span>
+                                            </th>
                                             <th style={headerStyle}>Movimiento</th>
                                             <th style={headerStyle}>Cantidad</th>
                                             <th style={headerStyle}>Electricista</th>
