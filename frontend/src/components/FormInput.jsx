@@ -36,6 +36,8 @@ export default function FormInput({
         disabled={disabled}
         style={{
           width: "100%",
+          boxSizing: "border-box",
+          minHeight: small ? "36px" : "42px",
           padding: small ? "7px 10px" : "10px 12px",
           fontSize: small ? "13px" : "14px",
           border: hasError ? "2px solid #ef4444" : "1px solid #e2e8f0",

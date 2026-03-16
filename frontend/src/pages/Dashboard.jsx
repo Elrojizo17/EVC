@@ -1,9 +1,21 @@
 ﻿import { useEffect, useState } from 'react';
-import Header from '../components/Header';
-import ActionButtons from '../components/ActionButtons';
+import { Link } from 'react-router-dom';
 import MapView from '../components/MapView';
+import logoEvc from '../assets/evc-logo.svg';
+import './Dashboard.css';
+
+const dashboardOptions = [
+    { label: 'Mapa', path: '/' },
+    { label: 'Registrar Novedad', path: '/novedad-censo' },
+    { label: 'Ingresas Inventario', path: '/inventario-bodega' },
+    { label: 'Devoluciones / Prestamos', path: '/devoluciones-prestamos' },
+    { label: 'Gestionar Electricistas', path: '/electricistas' },
+    { label: 'Reporte Novedades', path: '/reporte-novedades' },
+    { label: 'Reporte Gastos', path: '/reporte-gastos' }
+];
 
 export default function Dashboard() {
+    const [mostrarFiltros, setMostrarFiltros] = useState(false);
     const [tecnologiaFiltro, setTecnologiaFiltro] = useState(() => {
         return localStorage.getItem('tecnologiaFiltro') || 'todas';
     });
@@ -37,117 +49,103 @@ export default function Dashboard() {
     }, [numeroMax]);
 
     return (
-        <div style={{ padding: '20px' }}>
-            <Header />
-            <ActionButtons />
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-                <aside style={{
-                    width: '180px',
-                    background: 'white',
-                    borderRadius: '10px',
-                    padding: '10px',
-                    boxShadow: '0 1px 2px rgba(0,0,0,0.06)'
-                }}>
-                    <div style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '8px' }}>
-                        FILTRO
-                    </div>
-                    
-                    <label htmlFor='busqueda-lampara' style={{ fontSize: '12px', color: '#475569', marginTop: '10px', display: 'block' }}>
-                        Buscar lámpara
-                    </label>
-                    <input
-                        id='busqueda-lampara'
-                        type='text'
-                        value={busqueda}
-                        onChange={(e) => setBusqueda(e.target.value)}
-                        placeholder='Número...'
-                        style={{
-                            width: '100%',
-                            marginTop: '6px',
-                            padding: '6px 8px',
-                            borderRadius: '8px',
-                            border: '1px solid #e2e8f0',
-                            background: '#f8fafc',
-                            fontSize: '12px',
-                            height: '30px',
-                            boxSizing: 'border-box'
-                        }}
-                    />
-
-                    <label htmlFor='tecnologia-filtro' style={{ fontSize: '12px', color: '#475569', marginTop: '10px', display: 'block' }}>
-                        Tecnología
-                    </label>
-                    <select
-                        id='tecnologia-filtro'
-                        value={tecnologiaFiltro}
-                        onChange={(e) => setTecnologiaFiltro(e.target.value)}
-                        style={{
-                            width: '100%',
-                            marginTop: '6px',
-                            padding: '6px 8px',
-                            borderRadius: '8px',
-                            border: '1px solid #e2e8f0',
-                            background: '#f8fafc',
-                            fontSize: '12px'
-                        }}
-                    >
-                        <option value='todas'>Todas</option>
-                        <option value='led'>LED</option>
-                        <option value='sodio'>Sodio</option>
-                        <option value='metal_halide'>Metal Halide</option>
-                    </select>
-
-                    <div style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '8px', marginTop: '15px', paddingTop: '10px', borderTop: '1px solid #e2e8f0' }}>
-                        RANGO DE LÁMPARAS
+        <div className='dashboard-page'>
+            <div className='dashboard-shell'>
+                <aside className='dashboard-sidebar'>
+                    <div className='dashboard-logo-wrap'>
+                        <img src={logoEvc} alt='Logo EVC' className='dashboard-logo' />
                     </div>
 
-                    <label htmlFor='numero-min' style={{ fontSize: '12px', color: '#475569', marginTop: '10px', display: 'block' }}>
-                        Número mínimo
-                    </label>
-                    <input
-                        id='numero-min'
-                        type='number'
-                        value={numeroMin}
-                        onChange={(e) => setNumeroMin(e.target.value)}
-                        placeholder='Mín'
-                        style={{
-                            width: '100%',
-                            marginTop: '6px',
-                            padding: '6px 8px',
-                            borderRadius: '8px',
-                            border: '1px solid #e2e8f0',
-                            background: '#f8fafc',
-                            fontSize: '12px',
-                            height: '30px',
-                            boxSizing: 'border-box'
-                        }}
-                    />
+                    <h1 className='dashboard-title'>Gestión de Luminarias</h1>
 
-                    <label htmlFor='numero-max' style={{ fontSize: '12px', color: '#475569', marginTop: '10px', display: 'block' }}>
-                        Número máximo
-                    </label>
-                    <input
-                        id='numero-max'
-                        type='number'
-                        value={numeroMax}
-                        onChange={(e) => setNumeroMax(e.target.value)}
-                        placeholder='Máx'
-                        style={{
-                            width: '100%',
-                            marginTop: '6px',
-                            padding: '6px 8px',
-                            borderRadius: '8px',
-                            border: '1px solid #e2e8f0',
-                            background: '#f8fafc',
-                            fontSize: '12px',
-                            height: '30px',
-                            boxSizing: 'border-box'
-                        }}
-                    />
+                    <nav className='dashboard-menu'>
+                        {dashboardOptions.map((option) => (
+                            <Link key={option.path} to={option.path} className='dashboard-menu-link'>
+                                {option.label}
+                            </Link>
+                        ))}
+                    </nav>
                 </aside>
-                <div style={{ flex: 1 }}>
-                    <MapView tecnologiaFiltro={tecnologiaFiltro} busqueda={busqueda} numeroMin={numeroMin} numeroMax={numeroMax} />
-                </div>
+
+                <main className='dashboard-main'>
+                    <section className='dashboard-top-bar'>
+                        <label htmlFor='busqueda-lampara' className='dashboard-search-wrap'>
+                            <svg className='dashboard-search-icon' width='18' height='18' viewBox='0 0 24 24' aria-hidden='true'>
+                                <circle cx='10.5' cy='10.5' r='5.75' fill='none' stroke='currentColor' strokeWidth='1.8' />
+                                <path d='M15 15L19.25 19.25' fill='none' stroke='currentColor' strokeWidth='1.8' strokeLinecap='round' />
+                            </svg>
+                            <input
+                                id='busqueda-lampara'
+                                type='text'
+                                value={busqueda}
+                                onChange={(e) => setBusqueda(e.target.value)}
+                                placeholder='Barra de busqueda'
+                                className='dashboard-search-input'
+                            />
+                        </label>
+
+                        <button
+                            type='button'
+                            className='dashboard-filter-toggle'
+                            onClick={() => setMostrarFiltros((prev) => !prev)}
+                            aria-expanded={mostrarFiltros}
+                        >
+                            <svg width='18' height='18' viewBox='0 0 24 24' aria-hidden='true'>
+                                <path d='M3 5H21M6 12H18M10 19H14' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' />
+                            </svg>
+                            Filtros
+                        </button>
+                    </section>
+
+                    {mostrarFiltros && (
+                        <section className='dashboard-filters'>
+                            <div className='dashboard-filter-field'>
+                                <label htmlFor='tecnologia-filtro'>Tecnologia</label>
+                                <select
+                                    id='tecnologia-filtro'
+                                    value={tecnologiaFiltro}
+                                    onChange={(e) => setTecnologiaFiltro(e.target.value)}
+                                >
+                                    <option value='todas'>Todas</option>
+                                    <option value='led'>LED</option>
+                                    <option value='sodio'>Sodio</option>
+                                    <option value='metal_halide'>Metal Halide</option>
+                                </select>
+                            </div>
+
+                            <div className='dashboard-filter-field'>
+                                <label htmlFor='numero-min'>Numero minimo</label>
+                                <input
+                                    id='numero-min'
+                                    type='number'
+                                    value={numeroMin}
+                                    onChange={(e) => setNumeroMin(e.target.value)}
+                                    placeholder='Desde'
+                                />
+                            </div>
+
+                            <div className='dashboard-filter-field'>
+                                <label htmlFor='numero-max'>Numero maximo</label>
+                                <input
+                                    id='numero-max'
+                                    type='number'
+                                    value={numeroMax}
+                                    onChange={(e) => setNumeroMax(e.target.value)}
+                                    placeholder='Hasta'
+                                />
+                            </div>
+                        </section>
+                    )}
+
+                    <section className='dashboard-map-card'>
+                        <MapView
+                            tecnologiaFiltro={tecnologiaFiltro}
+                            busqueda={busqueda}
+                            numeroMin={numeroMin}
+                            numeroMax={numeroMax}
+                        />
+                    </section>
+                </main>
             </div>
         </div>
     );

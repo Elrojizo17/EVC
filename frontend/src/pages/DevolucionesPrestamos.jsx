@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import BackButton from "../components/BackButton";
 import { getInventario } from "../api/inventario.api";
 import { getElectricistas } from "../api/electricistas.api";
 import { getGastos, createGasto } from "../api/gastos.api";
@@ -226,7 +225,10 @@ export default function DevolucionesPrestamos() {
                 id_lote: idLoteMovimiento,
                 tipo_movimiento: formMovimiento.tipo_movimiento,
                 cantidad: parseInt(formMovimiento.cantidad),
-                id_novedad_luminaria: null,
+                id_novedad_luminaria:
+                    formMovimiento.tipo_movimiento === "DEVOLUCION" && despachoSeleccionado?.id_novedad
+                        ? Number(despachoSeleccionado.id_novedad)
+                        : null,
                 id_electricista: parseInt(formMovimiento.id_electricista),
                 codigo_pqr: formMovimiento.codigo_pqr?.trim(),
                 observacion: formMovimiento.observacion || null
@@ -329,12 +331,9 @@ export default function DevolucionesPrestamos() {
     );
 
     return (
-        <div style={{ padding: "20px", maxWidth: "1400px", margin: "0 auto" }}>
-            <div style={{ marginBottom: "20px" }}>
-                <BackButton />
-            </div>
+        <div style={{ padding: "8px 10px", maxWidth: "1400px", margin: "0 auto" }}>
 
-            <h1 style={{ color: "#0a5c6d", marginBottom: "10px" }}>Devoluciones y préstamos de bodega</h1>
+            <h1 style={{ color: "#1d3554", marginBottom: "10px" }}>Devoluciones y préstamos de bodega</h1>
             <p style={{ color: "#64748b", marginBottom: "30px" }}>
                 Registra movimientos de tipo <strong>PRESTADO</strong> o <strong>DEVOLUCION</strong> directamente sobre el inventario de bodega.
             </p>
@@ -342,13 +341,14 @@ export default function DevolucionesPrestamos() {
             {loading ? (
                 <p style={{ color: "#94a3b8" }}>Cargando datos...</p>
             ) : (
+                <>
                 <div style={{ display: "grid", gridTemplateColumns: "0.8fr 1.6fr", gap: "30px", alignItems: "start" }}>
-                    {/* Formulario */}
                     <form onSubmit={handleSubmit} style={{
                         background: "white",
                         padding: "30px",
                         borderRadius: "12px",
-                        boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                        boxShadow: "0 6px 16px rgba(16, 55, 86, 0.08)",
+                        border: "1px solid #d9e3ee",
                         height: "fit-content"
                     }}>
                         <h3 style={{ color: "#0f7c90", marginBottom: "20px" }}>Nuevo movimiento</h3>
@@ -457,7 +457,7 @@ export default function DevolucionesPrestamos() {
                                                                             borderRadius: "6px",
                                                                             padding: "6px 10px",
                                                                             cursor: submitLoading ? "not-allowed" : "pointer",
-                                                                            background: seleccionado ? "#0f7c90" : "#e2e8f0",
+                                                                            background: seleccionado ? "#1e78bd" : "#e2e8f0",
                                                                             color: seleccionado ? "white" : "#0f172a",
                                                                             fontSize: "11px",
                                                                             fontWeight: "600"
@@ -558,6 +558,12 @@ export default function DevolucionesPrestamos() {
                             required
                         />
 
+                        {formMovimiento.tipo_movimiento === "DEVOLUCION" && (
+                            <p style={{ marginTop: "-8px", marginBottom: "15px", fontSize: "12px", color: "#64748b" }}>
+                                La cantidad se sugiere automaticamente desde el despacho, pero puedes editarla para registrar la devolución real.
+                            </p>
+                        )}
+
                         <div style={{ marginBottom: "15px" }}>
                             <label style={labelStyle}>Electricista responsable *</label>
                             <select
@@ -613,7 +619,7 @@ export default function DevolucionesPrestamos() {
                                 marginTop: "20px",
                                 width: "100%",
                                 padding: "12px 24px",
-                                background: "#0f7c90",
+                                background: "#1e78bd",
                                 color: "white",
                                 border: "none",
                                 borderRadius: "8px",
@@ -632,7 +638,8 @@ export default function DevolucionesPrestamos() {
                         background: "white",
                         padding: "30px",
                         borderRadius: "12px",
-                        boxShadow: "0 1px 3px rgba(0,0,0,0.1)"
+                        boxShadow: "0 6px 16px rgba(16, 55, 86, 0.08)",
+                        border: "1px solid #d9e3ee"
                     }}>
                         <h3 style={{ color: "#0f7c90", marginBottom: "20px" }}>
                             Historial de devoluciones y préstamos ({movimientosOrdenados.length})
@@ -711,6 +718,7 @@ export default function DevolucionesPrestamos() {
                         )}
                     </div>
                 </div>
+                </>
             )}
         </div>
     );
@@ -726,9 +734,10 @@ const labelStyle = {
 
 const inputStyle = {
     width: "100%",
+    minHeight: "42px",
     padding: "10px 12px",
     border: "1px solid #e2e8f0",
-    borderRadius: "8px",
+    borderRadius: "6px",
     fontSize: "14px",
     boxSizing: "border-box"
 };

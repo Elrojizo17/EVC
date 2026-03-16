@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import BackButton from "../components/BackButton";
 import MiniMapaLuminaria from "../components/MiniMapaLuminaria";
 import { createNovedad, diagnosticarLampara } from "../api/novedades.api";
 import { createGasto } from "../api/gastos.api";
@@ -25,6 +24,12 @@ const validationsGasto = {
     codigo_pqr: [validationRules.required, validationRules.minLength(3)],
     observacion: []
 };
+
+const OPCIONES_TECNOLOGIA = [
+    { value: "LED", label: "Led" },
+    { value: "SOLIO", label: "Solio" },
+    { value: "METAL_HALIDE", label: "Metal Halide" }
+];
 
 export default function NovedadCenso() {
     const [novedadActual, setNovedadActual] = useState(null);
@@ -211,6 +216,21 @@ export default function NovedadCenso() {
             return;
         }
 
+        if (formNovedad.tipo_novedad === "CAMBIO_TECNOLOGIA") {
+            const tecnologiaAnterior = String(formNovedad.tecnologia_anterior || "").trim().toUpperCase();
+            const tecnologiaNueva = String(formNovedad.tecnologia_nueva || "").trim().toUpperCase();
+
+            if (!tecnologiaAnterior || !tecnologiaNueva) {
+                errorNotification("Selecciona la tecnología anterior y la nueva.");
+                return;
+            }
+
+            if (tecnologiaAnterior === tecnologiaNueva) {
+                errorNotification("La tecnología anterior y la tecnología nueva deben ser diferentes.");
+                return;
+            }
+        }
+
         setSubmitNovedadLoading(true);
         try {
             const payload = {
@@ -369,10 +389,9 @@ export default function NovedadCenso() {
     };
 
     return (
-        <div style={{ padding: "20px 30px" }}>
-            <BackButton />
+        <div style={{ padding: "8px 10px" }}>
 
-            <h1 style={{ color: "#0a5c6d", marginBottom: "10px" }}>Registrar novedad y gastos</h1>
+            <h1 style={{ color: "#1d3554", marginBottom: "10px" }}>Registrar novedad y gastos</h1>
             <p style={{ color: "#64748b", marginBottom: "30px" }}>
                 Registra una novedad (mantenimiento, reparación o cambio de tecnología) y, si lo necesitas, los movimientos de inventario asociados.
             </p>
@@ -404,7 +423,7 @@ export default function NovedadCenso() {
                         background: "white",
                         padding: "30px",
                         borderRadius: "12px",
-                        boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                        boxShadow: "0 6px 16px rgba(16, 55, 86, 0.08)",
                         height: "fit-content",
                         border: "1px solid #e2e8f0"
                     }}
@@ -467,30 +486,36 @@ export default function NovedadCenso() {
                             <>
                                 <div>
                                     <label style={labelStyle}>Tecnología anterior *</label>
-                                    <input
-                                        type="text"
+                                    <select
                                         name="tecnologia_anterior"
                                         value={formNovedad.tecnologia_anterior}
                                         onChange={handleChangeNovedad}
                                         onBlur={handleBlurNovedad}
                                         required
                                         style={inputStyle}
-                                        placeholder="Sodio"
-                                    />
+                                    >
+                                        <option value="">Seleccione tecnología</option>
+                                        {OPCIONES_TECNOLOGIA.map((opcion) => (
+                                            <option key={opcion.value} value={opcion.value}>{opcion.label}</option>
+                                        ))}
+                                    </select>
                                 </div>
 
                                 <div>
                                     <label style={labelStyle}>Tecnología nueva *</label>
-                                    <input
-                                        type="text"
+                                    <select
                                         name="tecnologia_nueva"
                                         value={formNovedad.tecnologia_nueva}
                                         onChange={handleChangeNovedad}
                                         onBlur={handleBlurNovedad}
                                         required
                                         style={inputStyle}
-                                        placeholder="LED"
-                                    />
+                                    >
+                                        <option value="">Seleccione tecnología</option>
+                                        {OPCIONES_TECNOLOGIA.map((opcion) => (
+                                            <option key={opcion.value} value={opcion.value}>{opcion.label}</option>
+                                        ))}
+                                    </select>
                                 </div>
 
                                 <div>
@@ -552,7 +577,7 @@ export default function NovedadCenso() {
                             marginTop: "20px",
                             width: "100%",
                             padding: "12px 24px",
-                            background: "#0f7c90",
+                            background: "#1e78bd",
                             color: "white",
                             border: "none",
                             borderRadius: "8px",
@@ -579,7 +604,7 @@ export default function NovedadCenso() {
                                 background: "white",
                                 padding: "30px",
                                 borderRadius: "12px",
-                                boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                                boxShadow: "0 6px 16px rgba(16, 55, 86, 0.08)",
                                 border: "1px solid #e2e8f0",
                                 height: "fit-content"
                             }}
@@ -835,7 +860,7 @@ export default function NovedadCenso() {
                                     marginTop: "20px",
                                     width: "100%",
                                     padding: "12px 24px",
-                                    background: "#0f7c90",
+                                    background: "#1e78bd",
                                     color: "white",
                                     border: "none",
                                     borderRadius: "8px",
@@ -865,9 +890,10 @@ const labelStyle = {
 
 const inputStyle = {
     width: "100%",
+    minHeight: "42px",
     padding: "10px 12px",
     border: "1px solid #e2e8f0",
-    borderRadius: "8px",
+    borderRadius: "6px",
     fontSize: "14px",
     boxSizing: "border-box",
     background: "#ffffff"

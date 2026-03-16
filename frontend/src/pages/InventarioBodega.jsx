@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo } from "react";
-import BackButton from "../components/BackButton";
 import { createElemento, getInventario, getHistorialElemento } from "../api/inventario.api";
 import { getUiConfig } from "../api/config.api";
 import { useNotification } from "../hooks/useNotification";
@@ -319,23 +318,20 @@ export default function InventarioBodega() {
     };
 
         return (
-		<div style={{ padding: "20px", maxWidth: "1400px", margin: "0 auto" }}>
-        <div style={{ marginBottom: "20px" }}>
-            <BackButton />
-        </div>
+		<div style={{ padding: "8px 10px", maxWidth: "1400px", margin: "0 auto" }}>
         
-        <h1 style={{ color: "#0a5c6d", marginBottom: "10px" }}>Ingrese inventario bodega</h1>
+        <h1 style={{ color: "#1d3554", marginBottom: "10px" }}>Ingrese inventario bodega</h1>
         <p style={{ color: "#64748b", marginBottom: "30px" }}>
             Registra nuevos elementos en la bodega con información de código, cantidad y costos.
         </p>
 
         <div style={{ display: "grid", gridTemplateColumns: "0.8fr 1.6fr", gap: "30px", alignItems: "start" }}>
-            {/* Formulario */}
             <form onSubmit={handleSubmit} style={{
                 background: "white",
                 padding: "30px",
                 borderRadius: "12px",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                boxShadow: "0 6px 16px rgba(16, 55, 86, 0.08)",
+                border: "1px solid #d9e3ee",
                 height: "fit-content"
             }}>
                 <h3 style={{ color: "#0f7c90", marginBottom: "20px" }}>Nuevo elemento</h3>
@@ -415,7 +411,7 @@ export default function InventarioBodega() {
                     marginTop: "20px",
                     width: "100%",
                     padding: "12px 24px",
-                    background: "#0f7c90",
+                    background: "#1e78bd",
                     color: "white",
                     border: "none",
                     borderRadius: "8px",
@@ -434,7 +430,8 @@ export default function InventarioBodega() {
             background: "white",
             padding: "30px",
             borderRadius: "12px",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.1)"
+            boxShadow: "0 6px 16px rgba(16, 55, 86, 0.08)",
+            border: "1px solid #d9e3ee"
             }}>
             <h3 style={{ color: "#0f7c90", marginBottom: "20px" }}>
                 Inventario actual ({(inventario || []).length} elementos)
@@ -460,7 +457,7 @@ export default function InventarioBodega() {
                     onClick={exportarInventarioExcel}
                     style={{
                         padding: "10px 14px",
-                        background: "#0f7c90",
+                        background: "#1e78bd",
                         color: "white",
                         border: "none",
                         borderRadius: "8px",
@@ -566,7 +563,7 @@ export default function InventarioBodega() {
                                             onClick={() => verHistorial(item)}
                                             style={{
                                                 padding: "6px 12px",
-                                                background: "#0f7c90",
+                                                background: "#1e78bd",
                                                 color: "white",
                                                 border: "none",
                                                 borderRadius: "6px",
@@ -719,6 +716,7 @@ export default function InventarioBodega() {
                                 <thead>
                                     <tr style={{ borderBottom: "2px solid #e2e8f0", background: "#f8fafc" }}>
                                         <th style={headerStyle}>Fecha</th>
+                                        <th style={headerStyle}>Novedad</th>
                                         <th style={headerStyle}>Lámpara</th>
                                         <th style={headerStyle}>Electricista</th>
                                         <th style={headerStyle}>Tipo mov.</th>
@@ -732,8 +730,15 @@ export default function InventarioBodega() {
                                 <tbody>
                                     {historial.map((h) => {
                                         const costoTotalMovimiento = getCostoTotalMovimiento(h);
+                                        const devolucionHeredada = h.tipo_movimiento === "DEVOLUCION" && h.asociacion_heredada;
                                         return (
-                                        <tr key={h.id_gasto} style={{ borderBottom: "1px solid #e2e8f0" }}>
+                                        <tr
+                                            key={h.id_gasto}
+                                            style={{
+                                                borderBottom: "1px solid #e2e8f0",
+                                                background: devolucionHeredada ? "#fff7ed" : "transparent"
+                                            }}
+                                        >
                                             <td style={cellStyle}>
                                                 {new Date(h.fecha).toLocaleDateString('es-ES', {
                                                     year: 'numeric',
@@ -741,7 +746,8 @@ export default function InventarioBodega() {
                                                     day: 'numeric'
                                                 })}
                                             </td>
-                                            <td style={cellStyle}>{h.numero_lampara ? `#${h.numero_lampara}` : "Sin lámpara asociada"}</td>
+                                            <td style={{ ...cellStyle, fontWeight: devolucionHeredada ? 600 : 400 }}>{h.id_novedad ? `#${h.id_novedad}` : "Sin novedad"}</td>
+                                            <td style={{ ...cellStyle, fontWeight: devolucionHeredada ? 600 : 400 }}>{h.numero_lampara ? `#${h.numero_lampara}` : "Sin lámpara asociada"}</td>
                                             <td style={cellStyle}>{h.nombre_electricista || (h.id_electricista ? `ID ${h.id_electricista}` : "-")}</td>
                                             <td style={cellStyle}>{h.tipo_movimiento}</td>
                                             <td style={cellStyle}>{h.cantidad_usada}</td>
@@ -794,9 +800,10 @@ const labelStyle = {
 
 const inputStyle = {
     width: "100%",
+    minHeight: "42px",
     padding: "10px 12px",
     border: "1px solid #e2e8f0",
-    borderRadius: "8px",
+    borderRadius: "6px",
     fontSize: "14px",
     boxSizing: "border-box"
 };

@@ -169,6 +169,96 @@ router.post("/", async (req, res) => {
     }
 });
 
+// PUT editar novedad (solo si no tiene gastos/movimientos asociados)
+router.put("/:id", async (req, res) => {
+    const idNovedad = Number(req.params.id);
+
+    if (!Number.isInteger(idNovedad) || idNovedad <= 0) {
+        return res.status(400).json({ error: "ID de novedad inválido" });
+    }
+
+    const {
+        numero_lampara,
+        tipo_novedad,
+        tecnologia_anterior,
+        tecnologia_nueva,
+        fecha_novedad,
+        observacion
+    } = req.body;
+
+    const client = await pool.connect();
+    try {
+        await client.query("BEGIN");
+
+        const actualResult = await client.query(
+            "SELECT * FROM novedad_luminaria WHERE id_novedad = $1",
+            [idNovedad]
+        );
+
+        if (actualResult.rows.length === 0) {
+            await client.query("ROLLBACK");
+            return res.status(404).json({ error: "Novedad no encontrada" });
+        }
+
+        const movimientosResult = await client.query(
+            "SELECT COUNT(*)::int AS total FROM movimiento_bodega WHERE id_novedad_luminaria = $1",
+            [idNovedad]
+        );
+        const totalMovimientos = Number(movimientosResult.rows[0]?.total || 0);
+
+        if (totalMovimientos > 0) {
+            await client.query("ROLLBACK");
+            return res.status(409).json({ error: "No se puede editar la novedad porque tiene gastos asociados" });
+        }
+
+        const actual = actualResult.rows[0];
+
+        const normalizarTecnologia = (valor) => {
+            if (valor === null || valor === undefined) return null;
+            const texto = String(valor).trim();
+            return texto === "" ? null : texto.toLowerCase();
+        };
+
+        const tipoFinal = tipo_novedad || actual.tipo_novedad;
+        const tecnologiaAnteriorFinal = String(tipoFinal).toUpperCase() === "CAMBIO_TECNOLOGIA"
+            ? normalizarTecnologia(tecnologia_anterior !== undefined ? tecnologia_anterior : actual.tecnologia_anterior)
+            : null;
+        const tecnologiaNuevaFinal = String(tipoFinal).toUpperCase() === "CAMBIO_TECNOLOGIA"
+            ? normalizarTecnologia(tecnologia_nueva !== undefined ? tecnologia_nueva : actual.tecnologia_nueva)
+            : null;
+
+        const updateResult = await client.query(
+            `UPDATE novedad_luminaria
+             SET numero_lampara = $1,
+                 tipo_novedad = $2,
+                 tecnologia_anterior = $3,
+                 tecnologia_nueva = $4,
+                 fecha_novedad = $5,
+                 observacion = $6
+             WHERE id_novedad = $7
+             RETURNING *`,
+            [
+                numero_lampara !== undefined ? numero_lampara : actual.numero_lampara,
+                tipoFinal,
+                tecnologiaAnteriorFinal,
+                tecnologiaNuevaFinal,
+                fecha_novedad || actual.fecha_novedad,
+                observacion !== undefined ? (observacion || null) : actual.observacion,
+                idNovedad
+            ]
+        );
+
+        await client.query("COMMIT");
+        res.json(updateResult.rows[0]);
+    } catch (error) {
+        await client.query("ROLLBACK");
+        console.error("Error actualizando novedad:", error);
+        res.status(500).json({ error: "Error actualizando novedad" });
+    } finally {
+        client.release();
+    }
+});
+
 // Endpoint de diagnóstico - verifica si una lámpara existe y su estado actual
 router.get("/diagnostico/:numero_lampara", async (req, res) => {
     const { numero_lampara } = req.params;

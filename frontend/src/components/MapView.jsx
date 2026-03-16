@@ -16,13 +16,13 @@ const getLuminarias = async () => {
     }
 };
 
-// Colores por tecnología (más vibrantes)
+// Colores por tecnologia usando la paleta oficial
 const getColorByTecnologia = (tecnologia) => {
     const tech = String(tecnologia || "").toLowerCase();
-    if (tech.includes("led")) return "#0066ff"; // Azul brillante
-    if (tech.includes("metal_halide")) return "#00cc44"; // Verde brillante
-    if (tech.includes("sodio")) return "#ff0033"; // Rojo brillante
-    return "#9933ff"; // Púrpura para otros
+    if (tech.includes("led")) return "#0D70B4";
+    if (tech.includes("metal_halide")) return "#095332";
+    if (tech.includes("sodio")) return "#C51623";
+    return "#1B4F72";
 };
 
 export default function MapView({ tecnologiaFiltro = "todas", busqueda = "", numeroMin = "", numeroMax = "" }) {
@@ -143,11 +143,11 @@ export default function MapView({ tecnologiaFiltro = "todas", busqueda = "", num
     }, [luminarias, tecnologiaFiltro, busqueda, numeroMin, numeroMax]);
 
     return (
-        <>
+        <div className='map-view'>
             <MapContainer
                 center={[4.334, -75.826]} // Caicedonia
                 zoom={14}
-                style={{ height: "500px", width: "100%", borderRadius: "10px" }}
+                style={{ height: "100%", minHeight: "540px", width: "100%", borderRadius: "14px" }}
                 preferCanvas={true}
                 renderer={L.canvas({ tolerance: 5 })}
             >
@@ -204,32 +204,32 @@ export default function MapView({ tecnologiaFiltro = "todas", busqueda = "", num
                 })}
             </MapContainer>
             
-            {/* Leyenda del mapa */}
             <div style={{
                 marginTop: "10px",
-                background: "white",
-                padding: "12px 16px",
-                borderRadius: "8px",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                background: "#ffffff",
+                padding: "10px 14px",
+                borderRadius: "10px",
+                border: "1px solid #d7e1eb",
                 display: "flex",
                 gap: "20px",
                 alignItems: "center",
-                justifyContent: "center"
+                justifyContent: "center",
+                flexWrap: "wrap"
             }}>
-                <div style={{ fontSize: "12px", fontWeight: "600", color: "#475569" }}>
+                <div style={{ fontSize: "12px", fontWeight: "700", color: "#27425e" }}>
                     LEYENDA:
                 </div>
                 <div style={{ display: "flex", gap: "16px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                        <div style={{ width: "14px", height: "14px", borderRadius: "50%", background: "#0066ff", border: "2px solid white", boxShadow: "0 0 0 1px #0066ff" }}></div>
+                        <div style={{ width: "14px", height: "14px", borderRadius: "50%", background: "#0D70B4", border: "2px solid white", boxShadow: "0 0 0 1px #0D70B4" }}></div>
                         <span style={{ fontSize: "12px", color: "#1e293b", fontWeight: "500" }}>LED</span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                        <div style={{ width: "14px", height: "14px", borderRadius: "50%", background: "#ff0033", border: "2px solid white", boxShadow: "0 0 0 1px #ff0033" }}></div>
+                        <div style={{ width: "14px", height: "14px", borderRadius: "50%", background: "#C51623", border: "2px solid white", boxShadow: "0 0 0 1px #C51623" }}></div>
                         <span style={{ fontSize: "12px", color: "#1e293b", fontWeight: "500" }}>Sodio</span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                        <div style={{ width: "14px", height: "14px", borderRadius: "50%", background: "#00cc44", border: "2px solid white", boxShadow: "0 0 0 1px #00cc44" }}></div>
+                        <div style={{ width: "14px", height: "14px", borderRadius: "50%", background: "#095332", border: "2px solid white", boxShadow: "0 0 0 1px #095332" }}></div>
                         <span style={{ fontSize: "12px", color: "#1e293b", fontWeight: "500" }}>Metal Halide</span>
                     </div>
                 </div>
@@ -244,6 +244,6 @@ export default function MapView({ tecnologiaFiltro = "todas", busqueda = "", num
                     {loading ? "Cargando luminarias..." : error}
                 </div>
             )}
-        </>
+        </div>
     );
 }

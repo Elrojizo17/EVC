@@ -24,6 +24,22 @@ export const createNovedad = async (data) => {
     return result;
 };
 
+export const updateNovedad = async (id, data) => {
+    const res = await fetch(`${API_URL}/${id}`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(data)
+    });
+
+    const result = await res.json();
+    if (!res.ok || result.error) {
+        throw new Error(result.error || "Error actualizando novedad");
+    }
+    return result;
+};
+
 export const diagnosticarLampara = async (numeroLampara) => {
     const url = `${API_URL}/diagnostico/${encodeURIComponent(numeroLampara)}`;
     const res = await fetch(url);

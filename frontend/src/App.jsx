@@ -7,6 +7,7 @@ import ReporteNovedades from "./pages/ReporteNovedades";
 import ReporteGastosGenerales from "./pages/ReporteGastosGenerales";
 import Electricistas from "./pages/Electricistas";
 import DevolucionesPrestamos from "./pages/DevolucionesPrestamos";
+import AppShell from "./components/AppShell";
 
 function App() {
   return (
@@ -28,12 +29,12 @@ function App() {
       />
       <Routes>
         <Route path="/" element={<Dashboard />} />
-        <Route path="/novedad-censo" element={<NovedadCenso />} />
-        <Route path="/inventario-bodega" element={<InventarioBodega />} />
-        <Route path="/reporte-novedades" element={<ReporteNovedades />} />
-        <Route path="/reporte-gastos" element={<ReporteGastosGenerales />} />
-        <Route path="/electricistas" element={<Electricistas />} />
-        <Route path="/devoluciones-prestamos" element={<DevolucionesPrestamos />} />
+        <Route path="/novedad-censo" element={<AppShell><NovedadCenso /></AppShell>} />
+        <Route path="/inventario-bodega" element={<AppShell><InventarioBodega /></AppShell>} />
+        <Route path="/reporte-novedades" element={<AppShell><ReporteNovedades /></AppShell>} />
+        <Route path="/reporte-gastos" element={<AppShell><ReporteGastosGenerales /></AppShell>} />
+        <Route path="/electricistas" element={<AppShell><Electricistas /></AppShell>} />
+        <Route path="/devoluciones-prestamos" element={<AppShell><DevolucionesPrestamos /></AppShell>} />
       </Routes>
     </BrowserRouter>
   );

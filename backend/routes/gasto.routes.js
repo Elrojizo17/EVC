@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const pool = require("../db");
 
+
 // GET gastos de inventario (movimientos de bodega)
 router.get("/", async (req, res) => {
     try {
@@ -11,7 +12,8 @@ router.get("/", async (req, res) => {
                 mb.id_lote,
                 mb.tipo_movimiento,
                 mb.cantidad AS cantidad_usada,
-                mb.id_novedad_luminaria AS id_novedad,
+                COALESCE(mb.id_novedad_luminaria, ref.id_novedad_luminaria) AS id_novedad,
+                (mb.id_novedad_luminaria IS NULL AND ref.id_novedad_luminaria IS NOT NULL) AS asociacion_heredada,
                 mb.fecha,
                 mb.observacion,
                 mb.id_electricista,
@@ -26,7 +28,21 @@ router.get("/", async (req, res) => {
             JOIN lote_producto lp ON lp.id_lote = mb.id_lote
             JOIN producto p ON p.codigo = lp.codigo_producto
             LEFT JOIN electricista e ON e.documento = mb.id_electricista
-            LEFT JOIN novedad_luminaria nl ON nl.id_novedad = mb.id_novedad_luminaria
+            LEFT JOIN LATERAL (
+                SELECT mb2.id_novedad_luminaria
+                FROM movimiento_bodega mb2
+                WHERE mb2.id_lote = mb.id_lote
+                  AND mb2.id_novedad_luminaria IS NOT NULL
+                  AND (
+                      (mb.codigo_pqr IS NOT NULL AND mb2.codigo_pqr = mb.codigo_pqr)
+                      OR mb2.id_movimiento = mb.id_movimiento
+                  )
+                ORDER BY
+                    CASE WHEN mb2.id_movimiento = mb.id_movimiento THEN 0 ELSE 1 END,
+                    ABS(EXTRACT(EPOCH FROM (mb.fecha - mb2.fecha)))
+                LIMIT 1
+            ) ref ON TRUE
+            LEFT JOIN novedad_luminaria nl ON nl.id_novedad = COALESCE(mb.id_novedad_luminaria, ref.id_novedad_luminaria)
             ORDER BY mb.fecha DESC
         `);
         res.json(result.rows);

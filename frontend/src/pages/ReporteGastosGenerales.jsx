@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import BackButton from "../components/BackButton";
 import { getGastos } from "../api/gastos.api";
 import { getCantidadConSigno, getCostoTotalMovimiento } from "../utils/gastos";
 
@@ -83,12 +82,9 @@ export default function ReporteGastosGenerales() {
     }, [gastosFiltrados, ordenCodigo]);
 
     return (
-        <div style={{ padding: "20px", maxWidth: "1250px", margin: "0 auto" }}>
-            <div style={{ marginBottom: "20px" }}>
-                <BackButton />
-            </div>
+        <div style={{ padding: "8px 10px", maxWidth: "1250px", margin: "0 auto" }}>
 
-            <h1 style={{ color: "#0a5c6d", marginBottom: "8px" }}>Reporte general de gastos</h1>
+            <h1 style={{ color: "#1d3554", marginBottom: "8px" }}>Reporte general de gastos</h1>
             <p style={{ color: "#64748b", marginBottom: "24px" }}>
                 Consulta todos los movimientos de bodega con su costo neto. Las devoluciones se restan del total.
             </p>
@@ -178,11 +174,18 @@ export default function ReporteGastosGenerales() {
                                     const costoTotal = getCostoTotalMovimiento(g);
                                     const novedadLabel = g.id_novedad ? `#${g.id_novedad}` : "Sin novedad";
                                     const lamparaLabel = g.numero_lampara || (g.id_novedad ? "Sin número" : "Sin lámpara asociada");
+                                    const devolucionHeredada = g.tipo_movimiento === "DEVOLUCION" && g.asociacion_heredada;
                                     return (
-                                        <tr key={g.id_gasto} style={tableRowStyle}>
+                                        <tr
+                                            key={g.id_gasto}
+                                            style={{
+                                                ...tableRowStyle,
+                                                background: devolucionHeredada ? "#fff7ed" : "transparent"
+                                            }}
+                                        >
                                             <td style={tdStyle}>{formatDate(g.fecha || g.fecha_registro)}</td>
-                                            <td style={tdStyle}>{novedadLabel}</td>
-                                            <td style={tdStyle}>{lamparaLabel}</td>
+                                            <td style={{ ...tdStyle, fontWeight: devolucionHeredada ? 600 : 400 }}>{novedadLabel}</td>
+                                            <td style={{ ...tdStyle, fontWeight: devolucionHeredada ? 600 : 400 }}>{lamparaLabel}</td>
                                             <td style={tdStyle}>{g.elemento || "-"}</td>
                                             <td style={tdStyle}>{g.tipo_movimiento || "-"}</td>
                                             <td style={tdStyle}>{getCantidadConSigno(g)}</td>
@@ -228,7 +231,8 @@ const panelStyle = {
     background: "white",
     padding: "20px",
     borderRadius: "12px",
-    boxShadow: "0 1px 3px rgba(0,0,0,0.1)"
+    boxShadow: "0 6px 16px rgba(16, 55, 86, 0.08)",
+    border: "1px solid #d9e3ee"
 };
 
 const mutedText = { color: "#94a3b8" };
