@@ -1,28 +1,27 @@
 const express = require("express");
 const router = express.Router();
 const {
-    getProductosConLotes,
     getMovimientos,
-    getLoteDetalle,
     crearMovimiento,
     createProducto,
-    createLote,
-    createElemento,
-    getInventarioFlat
+    getInventarioFlat,
+    getProductos,
+    updateProducto
 } = require("../controllers/inventario.controller");
 
 // Flat inventory (main endpoint for frontend)
 router.get("/todos", getInventarioFlat);
 
-// Products and lots
-router.get("/productos", getProductosConLotes);
+// Products
+router.get("/productos", getProductos);
 router.post("/productos", createProducto);
-router.post("/lotes", createLote);
-router.post("/elemento", createElemento);
-router.get("/lotes/:id_lote", getLoteDetalle);
+router.put("/productos/:codigo", updateProducto);
 
 // Movements
 router.get("/movimientos", getMovimientos);
 router.post("/movimientos", crearMovimiento);
+
+// Alias for compatibility with frontend (POST /elemento creates a product with entrada)
+router.post("/elemento", createProducto);
 
 module.exports = router;

@@ -1,54 +1,109 @@
 const pool = require("../db");
 
-// GET all lots in flat format (for frontend compatibility)
+// GET all inventory in flat format (new model without lots)
 exports.getInventarioFlat = async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT 
-                lp.id_lote,
-                lp.id_lote as id_inventario,
-                p.codigo as id_producto,
-                p.codigo as codigo_elemento,
-                p.nombre as elemento,
-                lp.anio_compra,
-                lp.precio_unitario as costo_unitario,
-                lp.cantidad,
-                lp.fecha_compra,
-                -- desgloses de movimientos por tipo
-                COALESCE(mov.entrada, 0)   as entrada,
-                COALESCE(mov.devolucion, 0) as devolucion,
-                COALESCE(mov.despachado, 0) as despachado,
-                COALESCE(mov.material_excedente, 0) as material_excedente,
-                COALESCE(mov.prestamo, 0)  as prestamo,
-                -- cantidad gastada neta: salidas - devoluciones
+            `WITH movimientos_normalizados AS (
+                SELECT
+                    mb.codigo_producto,
+                    mb.tipo_movimiento,
+                    mb.id_novedad_luminaria,
+                    mb.cantidad,
+                    mb.numero_orden,
+                    CASE
+                        WHEN regexp_replace(COALESCE(mb.numero_orden, ''), '[^0-9]', '', 'g') ~ '^[0-9]+$'
+                            THEN regexp_replace(COALESCE(mb.numero_orden, ''), '[^0-9]', '', 'g')::INT
+                        ELSE NULL
+                    END AS numero_orden_int
+                FROM movimiento_bodega mb
+            ),
+            resumen_movimientos AS (
+                SELECT
+                    mn.codigo_producto,
+                    -- Inicial: ORDEN:000 y entradas legacy sin orden
+                    COALESCE(SUM(CASE
+                        WHEN mn.tipo_movimiento = 'ENTRADA'
+                             AND mn.id_novedad_luminaria IS NULL
+                             AND (
+                                mn.numero_orden_int = 0
+                                OR (mn.numero_orden_int IS NULL AND COALESCE(TRIM(mn.numero_orden), '') = '')
+                             )
+                        THEN mn.cantidad ELSE 0
+                    END), 0) AS cantidad_inicial_movimientos,
+                    -- Recibe: desde ORDEN:001 en adelante
+                    COALESCE(SUM(CASE
+                        WHEN mn.tipo_movimiento = 'ENTRADA'
+                             AND mn.id_novedad_luminaria IS NULL
+                             AND mn.numero_orden_int >= 1
+                        THEN mn.cantidad ELSE 0
+                    END), 0) AS cantidad_recibe_movimientos,
+                    COALESCE(SUM(CASE
+                        WHEN mn.tipo_movimiento = 'DEVOLUCION'
+                             AND mn.id_novedad_luminaria IS NULL
+                        THEN mn.cantidad ELSE 0
+                    END), 0) AS devolucion,
+                    COALESCE(SUM(CASE
+                        WHEN mn.tipo_movimiento = 'DESPACHADO'
+                             AND mn.id_novedad_luminaria IS NULL
+                        THEN mn.cantidad ELSE 0
+                    END), 0) AS despachado,
+                    COALESCE(SUM(CASE
+                        WHEN mn.tipo_movimiento = 'PRESTADO'
+                             AND mn.id_novedad_luminaria IS NULL
+                        THEN mn.cantidad ELSE 0
+                    END), 0) AS prestamo,
+                    COALESCE(SUM(CASE
+                        WHEN mn.tipo_movimiento = 'MATERIAL_EXCEDENTE'
+                             AND mn.id_novedad_luminaria IS NULL
+                        THEN mn.cantidad ELSE 0
+                    END), 0) AS material_excedente
+                FROM movimientos_normalizados mn
+                GROUP BY mn.codigo_producto
+            )
+            SELECT
+                p.codigo AS id_producto,
+                p.codigo AS codigo_elemento,
+                p.nombre AS elemento,
+                CASE
+                    WHEN COALESCE(rm.cantidad_inicial_movimientos, 0) > 0
+                        THEN COALESCE(rm.cantidad_inicial_movimientos, 0)
+                    ELSE COALESCE(p.cantidad_inicial, 0)
+                END AS cantidad,
+                COALESCE(rm.cantidad_recibe_movimientos, 0) AS entrada,
+                COALESCE(rm.devolucion, 0) AS devolucion,
+                COALESCE(rm.despachado, 0) AS despachado,
+                COALESCE(rm.prestamo, 0) AS prestamo,
+                COALESCE(rm.material_excedente, 0) AS material_excedente,
+                p.precio_unitario AS costo_unitario,
+                p.fecha_compra,
+                -- Stock disponible: Inicial + Recibe + Devolucion - Despachado - Prestado - Material excedente
                 GREATEST(
-                    COALESCE(mov.total_salidas, 0) - COALESCE(mov.total_devolucion, 0),
+                    (
+                        CASE
+                            WHEN COALESCE(rm.cantidad_inicial_movimientos, 0) > 0
+                                THEN COALESCE(rm.cantidad_inicial_movimientos, 0)
+                            ELSE COALESCE(p.cantidad_inicial, 0)
+                        END
+                    )
+                    + COALESCE(rm.cantidad_recibe_movimientos, 0)
+                    + COALESCE(rm.devolucion, 0)
+                    - COALESCE(rm.despachado, 0)
+                    - COALESCE(rm.prestamo, 0)
+                    - COALESCE(rm.material_excedente, 0),
                     0
-                ) as cantidad_gastada,
-                -- stock disponible: inicial - salidas + entradas
+                ) AS stock_disponible,
                 GREATEST(
-                    lp.cantidad - COALESCE(mov.salidas, 0) + COALESCE(mov.entradas, 0),
+                    COALESCE(rm.despachado, 0)
+                    + COALESCE(rm.prestamo, 0)
+                    + COALESCE(rm.material_excedente, 0)
+                    - COALESCE(rm.devolucion, 0),
                     0
-                ) as stock_disponible
-            FROM lote_producto lp
-            JOIN producto p ON lp.codigo_producto = p.codigo
-            LEFT JOIN (
-                SELECT 
-                    id_lote,
-                    SUM(CASE WHEN tipo_movimiento IN ('DESPACHADO','PRESTADO','MATERIAL_EXCEDENTE') THEN cantidad ELSE 0 END) as total_salidas,
-                    SUM(CASE WHEN tipo_movimiento = 'DEVOLUCION' THEN cantidad ELSE 0 END) as total_devolucion,
-                    SUM(CASE WHEN tipo_movimiento IN ('DESPACHADO','PRESTADO','MATERIAL_EXCEDENTE') THEN cantidad ELSE 0 END) as salidas,
-                    SUM(CASE WHEN tipo_movimiento IN ('ENTRADA','DEVOLUCION') THEN cantidad ELSE 0 END) as entradas,
-                    SUM(CASE WHEN tipo_movimiento = 'ENTRADA' THEN cantidad ELSE 0 END) as entrada,
-                    SUM(CASE WHEN tipo_movimiento = 'DEVOLUCION' THEN cantidad ELSE 0 END) as devolucion,
-                    SUM(CASE WHEN tipo_movimiento = 'DESPACHADO' THEN cantidad ELSE 0 END) as despachado,
-                    SUM(CASE WHEN tipo_movimiento = 'MATERIAL_EXCEDENTE' THEN cantidad ELSE 0 END) as material_excedente,
-                    SUM(CASE WHEN tipo_movimiento = 'PRESTADO' THEN cantidad ELSE 0 END) as prestamo
-                FROM movimiento_bodega
-                GROUP BY id_lote
-            ) mov ON mov.id_lote = lp.id_lote
+                ) AS cantidad_gastada
+            FROM producto p
+            LEFT JOIN resumen_movimientos rm ON p.codigo = rm.codigo_producto
             WHERE p.activo = TRUE
-            ORDER BY p.nombre ASC, lp.anio_compra ASC, lp.fecha_compra ASC`
+            ORDER BY p.nombre ASC`
         );
         res.json(result.rows);
     } catch (error) {
@@ -57,35 +112,25 @@ exports.getInventarioFlat = async (req, res) => {
     }
 };
 
-// GET all products with their lots
-exports.getProductosConLotes = async (req, res) => {
+// GET all products
+exports.getProductos = async (req, res) => {
     try {
         const result = await pool.query(
             `SELECT 
-                p.codigo as id_producto,
                 p.codigo,
                 p.nombre,
-                p.activo,
-                json_agg(
-                    json_build_object(
-                        'id_lote', lp.id_lote,
-                        'codigo_producto', lp.codigo_producto,
-                        'anio_compra', lp.anio_compra,
-                        'precio_unitario', lp.precio_unitario,
-                        'cantidad', lp.cantidad,
-                        'fecha_compra', lp.fecha_compra
-                    ) ORDER BY lp.fecha_compra DESC
-                ) FILTER (WHERE lp.id_lote IS NOT NULL) as lotes
+                p.cantidad_inicial,
+                p.precio_unitario,
+                p.fecha_compra,
+                p.activo
             FROM producto p
-            LEFT JOIN lote_producto lp ON p.codigo = lp.codigo_producto
             WHERE p.activo = TRUE
-            GROUP BY p.codigo, p.nombre, p.activo
             ORDER BY p.nombre ASC`
         );
         res.json(result.rows);
     } catch (error) {
-        console.error("Error fetching products with lots:", error);
-        res.status(500).json({ error: "Error fetching inventory" });
+        console.error("Error fetching products:", error);
+        res.status(500).json({ error: "Error fetching products" });
     }
 };
 
@@ -99,17 +144,19 @@ exports.getMovimientos = async (req, res) => {
                 mb.cantidad,
                 mb.fecha,
                 mb.observacion,
-                lp.id_lote,
+                mb.numero_orden,
                 p.codigo,
                 p.nombre,
-                lp.anio_compra,
-                lp.precio_unitario,
-                n.id_novedad,
-                n.numero_lampara
+                p.precio_unitario,
+                mb.id_electricista,
+                e.nombre as nombre_electricista,
+                mb.codigo_pqr,
+                mb.id_novedad_luminaria,
+                nl.numero_lampara
             FROM movimiento_bodega mb
-            JOIN lote_producto lp ON mb.id_lote = lp.id_lote
-            JOIN producto p ON lp.codigo_producto = p.codigo
-            LEFT JOIN novedad_luminaria n ON mb.id_novedad_luminaria = n.id_novedad
+            JOIN producto p ON mb.codigo_producto = p.codigo
+            LEFT JOIN electricista e ON e.documento = mb.id_electricista
+            LEFT JOIN novedad_luminaria nl ON nl.id_novedad = mb.id_novedad_luminaria
             ORDER BY mb.fecha DESC
             LIMIT 100`
         );
@@ -120,45 +167,73 @@ exports.getMovimientos = async (req, res) => {
     }
 };
 
-// GET single lot details
-exports.getLoteDetalle = async (req, res) => {
-    const { id_lote } = req.params;
+// POST create new product (with entrada movement if quantity > 0)
+exports.createProducto = async (req, res) => {
+    const { codigo_elemento, elemento, cantidad, precio_unitario, fecha_compra, numero_orden } = req.body;
+
+    if (!codigo_elemento || !elemento || cantidad === null || cantidad === undefined) {
+        return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    if (cantidad < 0 || precio_unitario < 0) {
+        return res.status(400).json({ error: "Quantity and price must be >= 0" });
+    }
+
+    const client = await pool.connect();
     try {
-        const result = await pool.query(
-            `SELECT 
-                lp.id_lote,
-                lp.anio_compra,
-                lp.precio_unitario,
-                lp.cantidad,
-                lp.fecha_compra,
-                p.codigo as id_producto,
-                p.codigo,
-                p.nombre,
-                COALESCE(
-                    (SELECT SUM(cantidad) FROM movimiento_bodega WHERE id_lote = $1),
-                    0
-                ) as cantidad_movida
-            FROM lote_producto lp
-            JOIN producto p ON lp.codigo_producto = p.codigo
-            WHERE lp.id_lote = $1`,
-            [id_lote]
+        await client.query('BEGIN');
+
+        // Check if product already exists
+        const prodCheck = await client.query(
+            "SELECT codigo FROM producto WHERE codigo = $1",
+            [codigo_elemento]
         );
 
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: "Lot not found" });
+        if (prodCheck.rows.length > 0) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: "Product code already exists" });
         }
-        res.json(result.rows[0]);
+
+        // Create product
+        const prodResult = await client.query(
+            `INSERT INTO producto (codigo, nombre, cantidad_inicial, precio_unitario, fecha_compra, activo)
+            VALUES ($1, $2, $3, $4, $5, TRUE)
+            RETURNING codigo, nombre, cantidad_inicial, precio_unitario, fecha_compra`,
+            [codigo_elemento, elemento, cantidad, precio_unitario || 0, fecha_compra || null]
+        );
+
+        // If quantity > 0 and numero_orden provided, create ENTRADA movement
+        if (Number(cantidad) > 0 && numero_orden) {
+            await client.query(
+                `INSERT INTO movimiento_bodega (codigo_producto, tipo_movimiento, cantidad, numero_orden, observacion, fecha)
+                 VALUES ($1, 'ENTRADA', $2, $3, $4, $5)`,
+                [
+                    codigo_elemento,
+                    Number(cantidad),
+                    numero_orden,
+                    "Ingreso inicial",
+                    fecha_compra || new Date().toISOString().slice(0, 10)
+                ]
+            );
+        }
+
+        await client.query('COMMIT');
+
+        res.status(201).json(prodResult.rows[0]);
     } catch (error) {
-        console.error("Error fetching lot details:", error);
-        res.status(500).json({ error: "Error fetching lot details" });
+        await client.query('ROLLBACK');
+        console.error("Error creating product:", error);
+        res.status(500).json({ error: "Error creating product" });
+    } finally {
+        client.release();
     }
 };
 
 // POST record inventory movement
 exports.crearMovimiento = async (req, res) => {
-    const { id_lote, tipo_movimiento, cantidad, id_novedad_luminaria, observacion } = req.body;
+    const { codigo_producto, tipo_movimiento, cantidad, numero_orden, id_novedad_luminaria, observacion, fecha } = req.body;
 
-    if (!id_lote || !tipo_movimiento || !cantidad) {
+    if (!codigo_producto || !tipo_movimiento || !cantidad) {
         return res.status(400).json({ error: "Missing required fields" });
     }
 
@@ -171,22 +246,57 @@ exports.crearMovimiento = async (req, res) => {
         return res.status(400).json({ error: "Quantity must be greater than 0" });
     }
 
+    let numeroOrdenNormalizado = numero_orden || null;
+    if (tipo_movimiento === 'ENTRADA') {
+        const ordenTexto = String(numero_orden || "").trim();
+        if (!ordenTexto) {
+            return res.status(400).json({ error: "Order number is required for ENTRADA" });
+        }
+
+        const sinPrefijo = ordenTexto.replace(/^orden\s*:\s*/i, "").trim();
+        if (!/^\d+$/.test(sinPrefijo)) {
+            return res.status(400).json({ error: "Invalid order number format" });
+        }
+
+        numeroOrdenNormalizado = `ORDEN: ${sinPrefijo.padStart(3, "0")}`;
+    }
+
+    let fechaMovimiento;
+    if (fecha) {
+        const fechaTexto = String(fecha).trim();
+        let fechaParseada;
+
+        if (/^\d{4}-\d{2}-\d{2}$/.test(fechaTexto)) {
+            fechaParseada = new Date(`${fechaTexto}T12:00:00`);
+        } else {
+            fechaParseada = new Date(fechaTexto);
+        }
+
+        if (Number.isNaN(fechaParseada.getTime())) {
+            return res.status(400).json({ error: "Invalid movement date" });
+        }
+
+        fechaMovimiento = fechaParseada.toISOString().slice(0, 10);
+    } else {
+        fechaMovimiento = new Date().toISOString().slice(0, 10);
+    }
+
     try {
-        // Verify lot exists
-        const lotCheck = await pool.query(
-            "SELECT id_lote, cantidad FROM lote_producto WHERE id_lote = $1",
-            [id_lote]
+        // Verify product exists
+        const prodCheck = await pool.query(
+            "SELECT codigo FROM producto WHERE codigo = $1",
+            [codigo_producto]
         );
 
-        if (lotCheck.rows.length === 0) {
-            return res.status(404).json({ error: "Lot not found" });
+        if (prodCheck.rows.length === 0) {
+            return res.status(404).json({ error: "Product not found" });
         }
 
         const result = await pool.query(
-            `INSERT INTO movimiento_bodega (id_lote, tipo_movimiento, cantidad, id_novedad_luminaria, observacion)
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING id_movimiento, id_lote, tipo_movimiento, cantidad, fecha, observacion`,
-            [id_lote, tipo_movimiento, cantidad, id_novedad_luminaria || null, observacion || null]
+            `INSERT INTO movimiento_bodega (codigo_producto, tipo_movimiento, cantidad, numero_orden, id_novedad_luminaria, observacion, fecha)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id_movimiento, codigo_producto, tipo_movimiento, cantidad, fecha, observacion, numero_orden`,
+            [codigo_producto, tipo_movimiento, cantidad, numeroOrdenNormalizado, id_novedad_luminaria || null, observacion || null, fechaMovimiento]
         );
 
         res.status(201).json(result.rows[0]);
@@ -196,153 +306,37 @@ exports.crearMovimiento = async (req, res) => {
     }
 };
 
-// POST create new product
-exports.createProducto = async (req, res) => {
-    const { codigo, nombre } = req.body;
+// PUT update product
+exports.updateProducto = async (req, res) => {
+    const { codigo } = req.params;
+    const { nombre, precio_unitario } = req.body;
 
-    if (!codigo || !nombre) {
-        return res.status(400).json({ error: "Code and name are required" });
+    if (!nombre && !precio_unitario) {
+        return res.status(400).json({ error: "At least one field to update is required" });
     }
 
     try {
-        const result = await pool.query(
-            `INSERT INTO producto (codigo, nombre, activo)
-            VALUES ($1, $2, TRUE)
-            RETURNING codigo as id_producto, codigo, nombre, activo`,
-            [codigo, nombre]
-        );
-        res.status(201).json(result.rows[0]);
-    } catch (error) {
-        if (error.code === '23505') {
-            return res.status(400).json({ error: "Product code already exists" });
-        }
-        console.error("Error creating product:", error);
-        res.status(500).json({ error: "Error creating product" });
-    }
-};
+        const query = `UPDATE producto SET
+            ${nombre ? 'nombre = $1,' : ''}
+            ${precio_unitario ? `precio_unitario = ${nombre ? '$2' : '$1'},` : ''}
+            updated_at = CURRENT_TIMESTAMP
+            WHERE codigo = ${nombre && precio_unitario ? '$3' : (nombre ? '$2' : '$2')}
+            RETURNING codigo, nombre, cantidad_inicial, precio_unitario, fecha_compra`;
 
-// POST create new lot
-exports.createLote = async (req, res) => {
-    const { id_producto, codigo_producto, anio_compra, precio_unitario, cantidad, fecha_compra } = req.body;
-    const codigoProducto = (codigo_producto ?? id_producto ?? "").toString().trim();
+        const values = [];
+        if (nombre) values.push(nombre);
+        if (precio_unitario) values.push(precio_unitario);
+        values.push(codigo);
 
-    if (!codigoProducto || !anio_compra || !precio_unitario || !cantidad || !fecha_compra) {
-        return res.status(400).json({ error: "All fields are required" });
-    }
+        const result = await pool.query(query, values);
 
-    if (cantidad <= 0 || precio_unitario <= 0) {
-        return res.status(400).json({ error: "Quantity and price must be greater than 0" });
-    }
-
-    try {
-        // Verify product exists
-        const prodCheck = await pool.query(
-            "SELECT codigo FROM producto WHERE codigo = $1",
-            [codigoProducto]
-        );
-
-        if (prodCheck.rows.length === 0) {
+        if (result.rows.length === 0) {
             return res.status(404).json({ error: "Product not found" });
         }
 
-        const result = await pool.query(
-            `INSERT INTO lote_producto (codigo_producto, anio_compra, precio_unitario, cantidad, fecha_compra)
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING id_lote, codigo_producto as id_producto, codigo_producto, anio_compra, precio_unitario, cantidad, fecha_compra`,
-            [codigoProducto, anio_compra, precio_unitario, cantidad, fecha_compra]
-        );
-
-        res.status(201).json(result.rows[0]);
+        res.json(result.rows[0]);
     } catch (error) {
-        console.error("Error creating lot:", error);
-        res.status(500).json({ error: "Error creating lot" });
-    }
-};
-// POST create product + lot in one call (for compatibility with frontend)
-exports.createElemento = async (req, res) => {
-    const { codigo_elemento, elemento, cantidad, costo_unitario, fecha_compra } = req.body;
-
-    // Validation
-    const codigoTrim = (codigo_elemento ?? "").toString().trim();
-    const elementoTrim = (elemento ?? "").toString().trim();
-
-    if (!codigoTrim || !elementoTrim || cantidad === null || cantidad === undefined ||
-        costo_unitario === null || costo_unitario === undefined || !fecha_compra) {
-        return res.status(400).json({ error: "All fields are required: codigo_elemento, elemento, cantidad, costo_unitario, fecha_compra" });
-    }
-
-    if (cantidad < 0) {
-        return res.status(400).json({ error: "Quantity must be greater or equal to 0" });
-    }
-
-    if (costo_unitario < 0) {
-        return res.status(400).json({ error: "Unit cost must be greater or equal to 0" });
-    }
-
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
-
-        // Step 1: Validate product code uniqueness
-        const prodCheck = await client.query(
-            "SELECT codigo FROM producto WHERE codigo = $1",
-            [codigoTrim]
-        );
-
-        if (prodCheck.rows.length > 0) {
-            await client.query('ROLLBACK');
-            return res.status(400).json({ error: "El código del elemento ya existe" });
-        }
-
-        // Step 2: Create product
-        const prodResult = await client.query(
-            `INSERT INTO producto (codigo, nombre, activo)
-            VALUES ($1, $2, TRUE)
-            RETURNING codigo`,
-            [codigoTrim, elementoTrim]
-        );
-        const codigoProducto = prodResult.rows[0].codigo;
-
-        // Get purchase year from fecha_compra (string "YYYY-MM-DD")
-        let anioCompra;
-        if (fecha_compra) {
-            const yearStr = String(fecha_compra).slice(0, 4);
-            const parsed = parseInt(yearStr, 10);
-            anioCompra = Number.isFinite(parsed) ? parsed : new Date().getFullYear();
-        } else {
-            anioCompra = new Date().getFullYear();
-        }
-
-        // Step 3: Create lot
-        const loteResult = await client.query(
-            `INSERT INTO lote_producto (codigo_producto, anio_compra, precio_unitario, cantidad, fecha_compra)
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING id_lote, codigo_producto as id_producto, codigo_producto, anio_compra, precio_unitario, cantidad, fecha_compra`,
-            [codigoProducto, anioCompra, costo_unitario, cantidad, fecha_compra]
-        );
-
-        await client.query('COMMIT');
-
-        res.status(201).json({
-            id_lote: loteResult.rows[0].id_lote,
-            id_producto: codigoProducto,
-            codigo_producto: codigoProducto,
-            codigo: codigo_elemento,
-            nombre: elemento,
-            anio_compra: anioCompra,
-            precio_unitario: costo_unitario,
-            cantidad: cantidad,
-            fecha_compra: fecha_compra
-        });
-
-    } catch (error) {
-        await client.query('ROLLBACK');
-        if (error.code === '23505') {
-            return res.status(400).json({ error: "Producto con este código ya existe" });
-        }
-        console.error("Error creating elemento:", error);
-        res.status(500).json({ error: "Error registrando elemento" });
-    } finally {
-        client.release();
+        console.error("Error updating product:", error);
+        res.status(500).json({ error: "Error updating product" });
     }
 };

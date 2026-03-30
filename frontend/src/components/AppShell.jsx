@@ -1,4 +1,5 @@
-import { Link } from 'react-router-dom';
+import { useState } from 'react';
+import { NavLink } from 'react-router-dom';
 import logoEvc from '../assets/evc-logo.svg';
 import '../pages/Dashboard.css';
 
@@ -13,23 +14,44 @@ const menuOptions = [
 ];
 
 export default function AppShell({ children }) {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
   return (
     <div className='dashboard-page app-shell-soft'>
-      <div className='dashboard-shell'>
+      <div className={`dashboard-shell ${sidebarCollapsed ? 'dashboard-shell--sidebar-collapsed' : ''}`}>
         <aside className='dashboard-sidebar'>
-          <div className='dashboard-logo-wrap'>
-            <img src={logoEvc} alt='Logo EVC' className='dashboard-logo' />
+          <button
+            type='button'
+            className='dashboard-sidebar-toggle'
+            onClick={() => setSidebarCollapsed((prev) => !prev)}
+            aria-label={sidebarCollapsed ? 'Mostrar menú lateral' : 'Ocultar menú lateral'}
+            aria-expanded={!sidebarCollapsed}
+          >
+            ←
+          </button>
+
+          <div className='dashboard-sidebar-content'>
+            <div className='dashboard-logo-wrap'>
+              <img src={logoEvc} alt='Logo EVC' className='dashboard-logo' />
+            </div>
+
+            <h1 className='dashboard-title'>Gestión de Luminarias</h1>
+
+            <nav className='dashboard-menu'>
+              {menuOptions.map((option) => (
+                <NavLink
+                  key={option.path}
+                  to={option.path}
+                  end={option.path === '/'}
+                  className={({ isActive }) =>
+                    `dashboard-menu-link ${isActive ? 'dashboard-menu-link--active' : ''}`
+                  }
+                >
+                  {option.label}
+                </NavLink>
+              ))}
+            </nav>
           </div>
-
-          <h1 className='dashboard-title'>Gestión de Luminarias</h1>
-
-          <nav className='dashboard-menu'>
-            {menuOptions.map((option) => (
-              <Link key={option.path} to={option.path} className='dashboard-menu-link'>
-                {option.label}
-              </Link>
-            ))}
-          </nav>
         </aside>
 
         <main className='dashboard-main'>

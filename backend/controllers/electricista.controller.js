@@ -21,7 +21,7 @@ exports.getAllElectricistas = async (req, res) => {
     }
 };
 
-// GET single electrician with inventory
+// GET single electrician with inventory (actualizado para modelo sin lotes)
 exports.getElectristaConInventario = async (req, res) => {
     const { id } = req.params;
     try {
@@ -36,20 +36,18 @@ exports.getElectristaConInventario = async (req, res) => {
                 json_agg(
                     json_build_object(
                         'id_registro', ie.id_registro,
-                        'id_lote', ie.id_lote,
+                        'codigo_producto', ie.codigo_producto,
                         'cantidad', ie.cantidad,
-                        'codigo_producto', p.codigo,
                         'nombre_producto', p.nombre,
-                        'anio_compra', lp.anio_compra,
-                        'precio_unitario', lp.precio_unitario
+                        'precio_unitario', p.precio_unitario,
+                        'fecha_compra', p.fecha_compra
                     )
                 ) FILTER (WHERE ie.id_registro IS NOT NULL) as inventario
             FROM electricista e
             LEFT JOIN inventario_electricista ie ON e.documento = ie.documento_electricista
-            LEFT JOIN lote_producto lp ON ie.id_lote = lp.id_lote
-            LEFT JOIN producto p ON lp.codigo_producto = p.codigo
+            LEFT JOIN producto p ON ie.codigo_producto = p.codigo
             WHERE e.documento = $1
-            GROUP BY e.documento, e.nombre, e.telefono, e.activo, e.fecha_registro`,
+            GROUP BY e.documento, e.nombre, e.documento, e.telefono, e.activo, e.fecha_registro`,
             [id]
         );
 
@@ -92,35 +90,100 @@ exports.createElectricista = async (req, res) => {
 // PUT update electrician
 exports.updateElectricista = async (req, res) => {
     const { id } = req.params;
-    const { nombre, telefono, activo } = req.body;
+    const { nombre, documento, telefono, activo } = req.body;
+
+    const client = await pool.connect();
 
     try {
-        const result = await pool.query(
-            `UPDATE electricista 
-            SET nombre = COALESCE($2, nombre),
-                telefono = COALESCE($3, telefono),
-                activo = COALESCE($4, activo)
-            WHERE documento = $1
-            RETURNING documento as id_electricista, nombre, documento, telefono, activo, fecha_registro`,
-            [id, nombre, telefono, activo]
+        await client.query("BEGIN");
+
+        const documentoNormalizado = typeof documento === "string" ? documento.trim() : null;
+        const cambiaDocumento = Boolean(documentoNormalizado && documentoNormalizado !== id);
+
+        if (!cambiaDocumento) {
+            const result = await client.query(
+                `UPDATE electricista 
+                SET nombre = COALESCE($2, nombre),
+                    telefono = COALESCE($3, telefono),
+                    activo = COALESCE($4, activo)
+                WHERE documento = $1
+                RETURNING documento as id_electricista, nombre, documento, telefono, activo, fecha_registro`,
+                [id, nombre, telefono, activo]
+            );
+
+            if (result.rows.length === 0) {
+                await client.query("ROLLBACK");
+                return res.status(404).json({ error: "Electrician not found" });
+            }
+
+            await client.query("COMMIT");
+            return res.json(result.rows[0]);
+        }
+
+        const currentResult = await client.query(
+            `SELECT documento, nombre, telefono, activo, fecha_registro, created_at
+             FROM electricista
+             WHERE documento = $1`,
+            [id]
         );
 
-        if (result.rows.length === 0) {
+        if (currentResult.rows.length === 0) {
+            await client.query("ROLLBACK");
             return res.status(404).json({ error: "Electrician not found" });
         }
-        res.json(result.rows[0]);
+
+        const current = currentResult.rows[0];
+
+        const insertResult = await client.query(
+            `INSERT INTO electricista (documento, nombre, telefono, activo, fecha_registro, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+             RETURNING documento as id_electricista, nombre, documento, telefono, activo, fecha_registro`,
+            [
+                documentoNormalizado,
+                nombre ?? current.nombre,
+                telefono ?? current.telefono,
+                activo ?? current.activo,
+                current.fecha_registro,
+                current.created_at
+            ]
+        );
+
+        await client.query(
+            `UPDATE inventario_electricista
+             SET documento_electricista = $2
+             WHERE documento_electricista = $1`,
+            [id, documentoNormalizado]
+        );
+
+        await client.query(
+            `UPDATE movimiento_bodega
+             SET id_electricista = $2
+             WHERE id_electricista = $1`,
+            [id, documentoNormalizado]
+        );
+
+        await client.query("DELETE FROM electricista WHERE documento = $1", [id]);
+        await client.query("COMMIT");
+
+        return res.json(insertResult.rows[0]);
     } catch (error) {
+        await client.query("ROLLBACK");
+        if (error.code === "23505") {
+            return res.status(400).json({ error: "Document already exists" });
+        }
         console.error("Error updating electrician:", error);
         res.status(500).json({ error: "Error updating electrician" });
+    } finally {
+        client.release();
     }
 };
 
-// POST assign product lot to electrician
+// POST assign product to electrician (actualizado para modelo sin lotes)
 exports.asignarProductoElectricista = async (req, res) => {
-    const { id_electricista, id_lote, cantidad } = req.body;
+    const { id_electricista, codigo_producto, cantidad } = req.body;
 
-    if (!id_electricista || !id_lote || !cantidad) {
-        return res.status(400).json({ error: "Missing required fields" });
+    if (!id_electricista || !codigo_producto || !cantidad) {
+        return res.status(400).json({ error: "Missing required fields: id_electricista, codigo_producto, cantidad" });
     }
 
     if (cantidad <= 0) {
@@ -137,23 +200,23 @@ exports.asignarProductoElectricista = async (req, res) => {
             return res.status(404).json({ error: "Electrician not found" });
         }
 
-        // Check if lot exists
-        const lotCheck = await pool.query(
-            "SELECT id_lote FROM lote_producto WHERE id_lote = $1",
-            [id_lote]
+        // Check if product exists
+        const prodCheck = await pool.query(
+            "SELECT codigo FROM producto WHERE codigo = $1",
+            [codigo_producto]
         );
-        if (lotCheck.rows.length === 0) {
-            return res.status(404).json({ error: "Product lot not found" });
+        if (prodCheck.rows.length === 0) {
+            return res.status(404).json({ error: "Product not found" });
         }
 
         // Insert or update
         const result = await pool.query(
-            `INSERT INTO inventario_electricista (documento_electricista, id_lote, cantidad)
+            `INSERT INTO inventario_electricista (documento_electricista, codigo_producto, cantidad)
             VALUES ($1, $2, $3)
-            ON CONFLICT (documento_electricista, id_lote) 
-            DO UPDATE SET cantidad = EXCLUDED.cantidad
-            RETURNING id_registro, documento_electricista as id_electricista, id_lote, cantidad`,
-            [id_electricista, id_lote, cantidad]
+            ON CONFLICT (documento_electricista, codigo_producto) 
+            DO UPDATE SET cantidad = EXCLUDED.cantidad, updated_at = CURRENT_TIMESTAMP
+            RETURNING id_registro, documento_electricista as id_electricista, codigo_producto, cantidad`,
+            [id_electricista, codigo_producto, cantidad]
         );
 
         res.status(201).json(result.rows[0]);
@@ -204,33 +267,33 @@ exports.getProductos = async (req, res) => {
     }
 };
 
-// GET product lots
+// GET products (lista para asignar a electricistas - actualizado para modelo sin lotes)
+// Esta función ahora retorna productos individuales, no lotes
 exports.getLotes = async (req, res) => {
-    const { id_producto } = req.query;
+    const { codigo_producto } = req.query;
     try {
         let query = `SELECT 
-                        id_lote,
-                        codigo_producto as id_producto,
-                        codigo_producto,
-                        anio_compra,
-                        precio_unitario,
-                        cantidad,
-                        fecha_compra
-                    FROM lote_producto
-                    WHERE cantidad > 0`;
+                        p.codigo,
+                        p.codigo as codigo_producto,
+                        p.nombre,
+                        p.cantidad_inicial,
+                        p.precio_unitario,
+                        p.fecha_compra
+                    FROM producto p
+                    WHERE p.activo = TRUE`;
         const params = [];
 
-        if (id_producto) {
-            query += " AND codigo_producto = $1";
-            params.push(id_producto);
+        if (codigo_producto) {
+            query += " AND p.codigo = $1";
+            params.push(codigo_producto);
         }
 
-        query += " ORDER BY fecha_compra DESC";
+        query += " ORDER BY p.nombre ASC";
 
         const result = await pool.query(query, params);
         res.json(result.rows);
     } catch (error) {
-        console.error("Error fetching lots:", error);
-        res.status(500).json({ error: "Error fetching product lots" });
+        console.error("Error fetching products:", error);
+        res.status(500).json({ error: "Error fetching products" });
     }
 };

@@ -78,3 +78,15 @@ button:focus-visible {
     background-color: var(--color-primary);
   }
 }
+
+.swal2-container.evc-notification-container {
+  z-index: 99999 !important;
+}
+
+.swal2-container.evc-notification-container.swal2-backdrop-show {
+  z-index: 99999 !important;
+}
+
+.swal2-popup.evc-notification-popup {
+  z-index: 100000 !important;
+}

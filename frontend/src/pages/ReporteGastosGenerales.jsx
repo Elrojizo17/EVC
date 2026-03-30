@@ -33,6 +33,11 @@ export default function ReporteGastosGenerales() {
         const termino = busqueda.trim().toLowerCase();
 
         return (gastos || []).filter((g) => {
+            // Excluir movimientos tipo ENTRADA
+            if (g.tipo_movimiento === 'ENTRADA') {
+                return false;
+            }
+
             const matchBusqueda =
                 !termino ||
                 String(g.elemento || "").toLowerCase().includes(termino) ||

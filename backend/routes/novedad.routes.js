@@ -23,6 +23,7 @@ router.post("/", async (req, res) => {
         tipo_novedad,
         tecnologia_anterior,
         tecnologia_nueva,
+        potencia_nueva_w,
         id_elemento_reemplazo,
         accion,
         fecha_novedad,
@@ -98,6 +99,12 @@ router.post("/", async (req, res) => {
                 } else {
                     // Obtener potencia del elemento de inventario (lote) si se proporcionó
                     let potencia_nueva = null;
+
+                    const potenciaManual = Number(potencia_nueva_w);
+                    if (Number.isFinite(potenciaManual) && potenciaManual > 0) {
+                        potencia_nueva = Math.floor(potenciaManual);
+                    }
+
                     if (id_elemento_reemplazo) {
                         const elementoResult = await client.query(
                             `SELECT 
@@ -109,7 +116,7 @@ router.post("/", async (req, res) => {
                             [id_elemento_reemplazo]
                         );
                         
-                        if (elementoResult.rows.length > 0) {
+                        if (elementoResult.rows.length > 0 && !potencia_nueva) {
                             const elemento = elementoResult.rows[0];
                             // Intentar extraer la potencia del nombre o código del elemento
                             // Ej: "Lámpara LED 150W" o "LAMP-150"

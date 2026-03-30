@@ -3,6 +3,7 @@ const cors = require("cors");
 require("dotenv").config();
 const errorHandler = require("./middleware/error.middleware");
 const pool = require("./db");
+const runMigrations = require("./runMigrations");
 
 const app = express();
 
@@ -17,6 +18,7 @@ const inventarioRoutes = require("./routes/inventario.routes");
 const gastoRoutes = require("./routes/gasto.routes");
 const electricistaRoutes = require("./routes/electricista.routes");
 const configRoutes = require("./routes/config.routes");
+const otpRoutes = require("./routes/otp.routes");
 
 app.use("/api/luminarias", luminariaRoutes);
 app.use("/api/novedades", novedadRoutes);
@@ -24,6 +26,7 @@ app.use("/api/inventario", inventarioRoutes);
 app.use("/api/gastos", gastoRoutes);
 app.use("/api/electricistas", electricistaRoutes);
 app.use("/api/config", configRoutes);
+app.use("/api/otp", otpRoutes);
 
 // ruta raíz
 app.get("/", (req, res) => {
@@ -48,6 +51,11 @@ async function ensureDatabaseCompatibility() {
     `);
 
     await pool.query(`
+        ALTER TABLE IF EXISTS lote_producto
+            ADD COLUMN IF NOT EXISTS numero_orden VARCHAR(80);
+    `);
+
+    await pool.query(`
         DROP FUNCTION IF EXISTS movimiento_bodega_ai() CASCADE;
         DROP FUNCTION IF EXISTS lote_adjust_stock(bigint, integer) CASCADE;
     `);
@@ -55,6 +63,11 @@ async function ensureDatabaseCompatibility() {
 
 async function startServer() {
     try {
+        // Ejecutar migraciones primero
+        console.log("🔄 Ejecutando migraciones de base de datos...");
+        await runMigrations();
+        console.log("✅ Migraciones completadas");
+
         await ensureDatabaseCompatibility();
         console.log("✅ Compatibilidad de BD verificada (movimiento_bodega)");
 

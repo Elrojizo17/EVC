@@ -14,6 +14,7 @@ const validationsNovedad = {
     tipo_novedad: [validationRules.required],
     tecnologia_anterior: [],
     tecnologia_nueva: [],
+    potencia_nueva_w: [],
     fecha_novedad: [validationRules.required],
     observacion: []
 };
@@ -27,7 +28,7 @@ const validationsGasto = {
 
 const OPCIONES_TECNOLOGIA = [
     { value: "LED", label: "Led" },
-    { value: "SOLIO", label: "Solio" },
+    { value: "SODIO", label: "Sodio" },
     { value: "METAL_HALIDE", label: "Metal Halide" }
 ];
 
@@ -61,6 +62,7 @@ export default function NovedadCenso() {
             tipo_novedad: "MANTENIMIENTO",
             tecnologia_anterior: "",
             tecnologia_nueva: "",
+            potencia_nueva_w: "",
             id_elemento_reemplazo: "",
             fecha_novedad: new Date().toISOString().split("T")[0],
             observacion: ""
@@ -157,11 +159,12 @@ export default function NovedadCenso() {
             return;
         }
 
-        if (formNovedad.tecnologia_anterior || formNovedad.tecnologia_nueva || formNovedad.id_elemento_reemplazo) {
+        if (formNovedad.tecnologia_anterior || formNovedad.tecnologia_nueva || formNovedad.potencia_nueva_w || formNovedad.id_elemento_reemplazo) {
             setFormNovedad((prev) => ({
                 ...prev,
                 tecnologia_anterior: "",
                 tecnologia_nueva: "",
+                potencia_nueva_w: "",
                 id_elemento_reemplazo: ""
             }));
         }
@@ -169,6 +172,7 @@ export default function NovedadCenso() {
         formNovedad.tipo_novedad,
         formNovedad.tecnologia_anterior,
         formNovedad.tecnologia_nueva,
+        formNovedad.potencia_nueva_w,
         formNovedad.id_elemento_reemplazo,
         setFormNovedad
     ]);
@@ -219,14 +223,20 @@ export default function NovedadCenso() {
         if (formNovedad.tipo_novedad === "CAMBIO_TECNOLOGIA") {
             const tecnologiaAnterior = String(formNovedad.tecnologia_anterior || "").trim().toUpperCase();
             const tecnologiaNueva = String(formNovedad.tecnologia_nueva || "").trim().toUpperCase();
+            const potenciaNueva = Number(formNovedad.potencia_nueva_w);
 
             if (!tecnologiaAnterior || !tecnologiaNueva) {
                 errorNotification("Selecciona la tecnología anterior y la nueva.");
                 return;
             }
 
-            if (tecnologiaAnterior === tecnologiaNueva) {
-                errorNotification("La tecnología anterior y la tecnología nueva deben ser diferentes.");
+            if (formNovedad.potencia_nueva_w && (!Number.isFinite(potenciaNueva) || potenciaNueva <= 0)) {
+                errorNotification("La potencia nueva debe ser un número mayor a 0.");
+                return;
+            }
+
+            if (tecnologiaAnterior === tecnologiaNueva && (!Number.isFinite(potenciaNueva) || potenciaNueva <= 0)) {
+                errorNotification("Si la tecnología es la misma, debes indicar la nueva potencia (W).");
                 return;
             }
         }
@@ -237,6 +247,10 @@ export default function NovedadCenso() {
                 ...formNovedad,
                 tecnologia_anterior: normalizarTecnologia(formNovedad.tecnologia_anterior),
                 tecnologia_nueva: normalizarTecnologia(formNovedad.tecnologia_nueva),
+                potencia_nueva_w: (() => {
+                    const potencia = Number(formNovedad.potencia_nueva_w);
+                    return Number.isFinite(potencia) && potencia > 0 ? Math.floor(potencia) : null;
+                })(),
                 observacion: formNovedad.observacion || null,
                 accion: null
             };
@@ -484,6 +498,20 @@ export default function NovedadCenso() {
 
                         {formNovedad.tipo_novedad === "CAMBIO_TECNOLOGIA" && (
                             <>
+                                <div
+                                    style={{
+                                        gridColumn: "1 / -1",
+                                        background: "#eff6ff",
+                                        border: "1px solid #bfdbfe",
+                                        borderRadius: "8px",
+                                        padding: "10px 12px",
+                                        fontSize: "12px",
+                                        color: "#1e3a8a"
+                                    }}
+                                >
+                                    Puedes registrar cambio de potencia con la misma tecnologia. Si "Tecnologia anterior" y "Tecnologia nueva" son iguales, debes completar "Potencia nueva (W)".
+                                </div>
+
                                 <div>
                                     <label style={labelStyle}>Tecnología anterior *</label>
                                     <select
@@ -539,7 +567,7 @@ export default function NovedadCenso() {
                                                     key={i.id_inventario}
                                                     value={i.id_inventario}
                                                     disabled={stockDisponible <= 0}
-                                                    style={{ color: stockBajo ? "#ef4444" : stockDisponible <= 0 ? "#b91c1c" : "#0f172a" }}
+                                                    style={{ color: stockBajo ? "#c2410c" : stockDisponible <= 0 ? "#b91c1c" : "#0f172a" }}
                                                 >
                                                     {i.elemento} - {i.codigo_elemento}
                                                     {anioTexto}
@@ -548,6 +576,24 @@ export default function NovedadCenso() {
                                             );
                                         })}
                                     </select>
+                                </div>
+
+                                <div>
+                                    <label style={labelStyle}>Potencia nueva (W)</label>
+                                    <input
+                                        type="number"
+                                        name="potencia_nueva_w"
+                                        value={formNovedad.potencia_nueva_w}
+                                        onChange={handleChangeNovedad}
+                                        onBlur={handleBlurNovedad}
+                                        min="1"
+                                        step="1"
+                                        style={inputStyle}
+                                        placeholder="Ej: 100"
+                                    />
+                                    <div style={{ marginTop: "4px", fontSize: "11px", color: "#64748b" }}>
+                                        Obligatoria cuando la tecnología anterior y nueva sean iguales.
+                                    </div>
                                 </div>
                             </>
                         )}
@@ -663,14 +709,29 @@ export default function NovedadCenso() {
                                     <input
                                         type="text"
                                         value={busquedaInventario}
-                                        onChange={(e) => setBusquedaInventario(e.target.value)}
+                                        onChange={(e) => {
+                                            setBusquedaInventario(e.target.value);
+                                            // Limpiar selección cuando se busca
+                                            if (e.target.value.trim() !== "") {
+                                                setFormGasto((prev) => ({
+                                                    ...prev,
+                                                    id_inventario: ""
+                                                }));
+                                            }
+                                        }}
                                         placeholder="Buscar material por nombre o código..."
                                         style={{ ...inputStyle, marginBottom: "8px" }}
                                     />
                                     <select
                                         name="id_inventario"
                                         value={formGasto.id_inventario}
-                                        onChange={handleChangeGasto}
+                                        onChange={(e) => {
+                                            handleChangeGasto(e);
+                                            // Limpiar búsqueda cuando se selecciona un elemento
+                                            if (e.target.value) {
+                                                setBusquedaInventario("");
+                                            }
+                                        }}
                                         onBlur={handleBlurGasto}
                                         style={inputStyle}
                                     >
@@ -684,7 +745,7 @@ export default function NovedadCenso() {
                                                     key={i.id_inventario}
                                                     value={i.id_inventario}
                                                     disabled={stockDisponible <= 0}
-                                                    style={{ color: stockBajo ? "#ef4444" : stockDisponible <= 0 ? "#b91c1c" : "#0f172a" }}
+                                                    style={{ color: stockBajo ? "#c2410c" : stockDisponible <= 0 ? "#b91c1c" : "#0f172a" }}
                                                 >
                                                     {i.codigo_elemento} - {i.elemento}
                                                     {stockTexto}
@@ -692,7 +753,7 @@ export default function NovedadCenso() {
                                             );
                                         })}
                                     </select>
-                                    {!inventarioFiltrado.length && (
+                                    {!inventarioFiltrado.length && busquedaInventario.trim() && (
                                         <div style={{ ...errorTextStyle, color: "#64748b" }}>
                                             No se encontraron materiales con ese criterio de búsqueda.
                                         </div>
@@ -708,10 +769,17 @@ export default function NovedadCenso() {
                                         onChange={handleChangeGasto}
                                         onBlur={handleBlurGasto}
                                         min="1"
+                                        step="1"
                                         style={inputStyle}
-                                        placeholder="0"
+                                        placeholder="Ingresa la cantidad"
+                                        disabled={!formGasto.id_inventario}
                                     />
                                     {itemError && <div style={errorTextStyle}>{itemError}</div>}
+                                    {!formGasto.id_inventario && (
+                                        <div style={{ fontSize: "12px", color: "#94a3b8", marginTop: "4px" }}>
+                                            Selecciona un elemento primero
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div>

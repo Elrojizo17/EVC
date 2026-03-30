@@ -1,33 +1,38 @@
 import toast from 'react-hot-toast';
+import Swal from 'sweetalert2';
+import 'sweetalert2/dist/sweetalert2.min.css';
+
+const baseModalConfig = {
+  confirmButtonColor: '#1e78bd',
+  backdrop: 'rgba(15, 23, 42, 0.45)',
+  zIndex: 4000,
+  heightAuto: false,
+  allowOutsideClick: true,
+  allowEscapeKey: true,
+  customClass: {
+    container: 'evc-notification-container',
+    popup: 'evc-notification-popup',
+  },
+};
 
 export const useNotification = () => {
   const success = (message) => {
-    toast.success(message, {
-      duration: 3000,
-      position: 'top-right',
-      style: {
-        background: '#10b981',
-        color: '#fff',
-        borderRadius: '8px',
-        padding: '16px',
-        fontSize: '14px',
-        fontWeight: '500',
-      },
+    return Swal.fire({
+      ...baseModalConfig,
+      icon: 'success',
+      title: 'Registro exitoso',
+      text: String(message || 'La operación se realizó correctamente.'),
+      confirmButtonText: 'Aceptar',
     });
   };
 
   const error = (message) => {
-    toast.error(message, {
-      duration: 4000,
-      position: 'top-right',
-      style: {
-        background: '#ef4444',
-        color: '#fff',
-        borderRadius: '8px',
-        padding: '16px',
-        fontSize: '14px',
-        fontWeight: '500',
-      },
+    return Swal.fire({
+      ...baseModalConfig,
+      icon: 'error',
+      title: 'No se pudo completar',
+      text: String(message || 'Revisa los datos del formulario e intenta de nuevo.'),
+      confirmButtonText: 'Entendido',
     });
   };
 
@@ -46,18 +51,12 @@ export const useNotification = () => {
   };
 
   const info = (message) => {
-    toast(message, {
-      duration: 3000,
-      position: 'top-right',
-      icon: 'ℹ️',
-      style: {
-        background: '#06b6d4',
-        color: '#fff',
-        borderRadius: '8px',
-        padding: '16px',
-        fontSize: '14px',
-        fontWeight: '500',
-      },
+    return Swal.fire({
+      ...baseModalConfig,
+      icon: 'info',
+      title: 'Información',
+      text: String(message || ''),
+      confirmButtonText: 'Aceptar',
     });
   };
 

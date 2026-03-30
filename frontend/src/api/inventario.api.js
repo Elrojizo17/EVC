@@ -35,14 +35,22 @@ export const createProducto = async (data) => {
     }
 };
 
-// Lotes
+// Lotes (actualizado para nuevo modelo sin lotes - crea movimiento ENTRADA)
 export const createLote = async (data) => {
     try {
-        const response = await axios.post(`${API_URL}/lotes`, data);
+        // Para el nuevo modelo, createLote crea un movimiento ENTRADA para un producto existente
+        const response = await axios.post(`${API_URL}/movimientos`, {
+            codigo_producto: data.codigo_producto,
+            tipo_movimiento: 'ENTRADA',
+            cantidad: data.cantidad,
+            numero_orden: data.numero_orden,
+            observacion: `Entrada de orden ${data.numero_orden}`,
+            fecha: data.fecha_compra
+        });
         return response.data;
     } catch (error) {
         console.error("Error creating lot:", error);
-        throw error;
+        throw error.response?.data || error;
     }
 };
 
@@ -94,13 +102,22 @@ export const createElemento = async (data) => {
     }
 };
 
-// Alias para compatibilidad con código anterior
-export const getHistorialElemento = async (id_inventario) => {
+export const updateElemento = async (id_lote, data) => {
     try {
-        // Usar los gastos de inventario (movimiento_bodega) y filtrar
-        // por el lote correspondiente a este elemento (id_inventario === id_lote)
+        const response = await axios.put(`${API_URL}/elemento/${id_lote}`, data);
+        return response.data;
+    } catch (error) {
+        console.error("Error updating element:", error.response?.data || error.message);
+        throw error.response?.data || error;
+    }
+};
+
+// Alias para compatibilidad con código anterior
+export const getHistorialElemento = async (codigoProducto) => {
+    try {
+        // En el nuevo modelo, el historial se obtiene por codigo_producto
         const gastos = await getGastos();
-        return (gastos || []).filter((g) => g.id_lote === id_inventario);
+        return (gastos || []).filter((g) => g.codigo_producto === codigoProducto);
     } catch (error) {
         console.error("Error fetching element history:", error);
         throw error;

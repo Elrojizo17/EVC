@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { getNovedades } from "../api/novedades.api";
+import { getNovedades, updateNovedad } from "../api/novedades.api";
 import { getGastos, createGasto } from "../api/gastos.api";
 import { getInventario } from "../api/inventario.api";
 import { getElectricistas } from "../api/electricistas.api";
@@ -7,6 +7,14 @@ import { getUiConfig } from "../api/config.api";
 import { getCostoTotalMovimiento } from "../utils/gastos";
 import { useNotification } from "../hooks/useNotification";
 import { UMBRAL_STOCK_BAJO } from "../constants/inventario";
+import OtpModal from "../components/OtpModal";
+
+const OPCIONES_TIPO_NOVEDAD = ["MANTENIMIENTO", "CAMBIO_TECNOLOGIA", "REPARACION", "INSTALACION"];
+const OPCIONES_TECNOLOGIA = [
+    { value: "led", label: "Led" },
+    { value: "sodio", label: "Sodio" },
+    { value: "metal_halide", label: "Metal Halide" }
+];
 
 export default function ReporteNovedades() {
     const [novedades, setNovedades] = useState([]);
@@ -21,8 +29,18 @@ export default function ReporteNovedades() {
     const [umbralStockBajo, setUmbralStockBajo] = useState(UMBRAL_STOCK_BAJO);
     const [electricistas, setElectricistas] = useState([]);
     const [busquedaInventario, setBusquedaInventario] = useState("");
+    const [submitNovedadLoading, setSubmitNovedadLoading] = useState(false);
     const [submitMovimientoLoading, setSubmitMovimientoLoading] = useState(false);
     const [itemError, setItemError] = useState("");
+    const [novedadError, setNovedadError] = useState("");
+    const [formNovedad, setFormNovedad] = useState({
+        numero_lampara: "",
+        tipo_novedad: "MANTENIMIENTO",
+        tecnologia_anterior: "",
+        tecnologia_nueva: "",
+        fecha_novedad: "",
+        observacion: ""
+    });
     const [formMovimiento, setFormMovimiento] = useState({
         id_inventario: "",
         tipo_movimiento: "DESPACHADO",
@@ -33,6 +51,8 @@ export default function ReporteNovedades() {
     });
     const [ordenNovedades, setOrdenNovedades] = useState("asc");
     const [ordenCodigoMovimientos, setOrdenCodigoMovimientos] = useState("asc");
+    const [mostrarOtp, setMostrarOtp] = useState(false);
+    const [pendingOtpAction, setPendingOtpAction] = useState(null);
     const { success, error: errorNotification } = useNotification();
 
     useEffect(() => {
@@ -168,14 +188,17 @@ export default function ReporteNovedades() {
     }, [inventario, busquedaInventario]);
 
     const abrirEditorMovimientos = (novedad) => {
-        const movimientos = movimientosPorNovedad.get(Number(novedad.id_novedad)) || [];
-        if (movimientos.length > 0) {
-            errorNotification("Solo puedes usar este formulario en novedades sin movimientos registrados");
-            return;
-        }
-
         setNovedadMovimientos(novedad);
         setItemError("");
+        setNovedadError("");
+        setFormNovedad({
+            numero_lampara: novedad.numero_lampara || "",
+            tipo_novedad: novedad.tipo_novedad || "MANTENIMIENTO",
+            tecnologia_anterior: novedad.tecnologia_anterior || "",
+            tecnologia_nueva: novedad.tecnologia_nueva || "",
+            fecha_novedad: formatDateForInput(novedad.fecha_novedad),
+            observacion: novedad.observacion || ""
+        });
         setFormMovimiento({
             id_inventario: "",
             tipo_movimiento: "DESPACHADO",
@@ -187,10 +210,74 @@ export default function ReporteNovedades() {
     };
 
     const cerrarEditorMovimientos = () => {
-        if (submitMovimientoLoading) {
+        if (submitMovimientoLoading || submitNovedadLoading) {
             return;
         }
         setNovedadMovimientos(null);
+    };
+
+    const handleChangeNovedad = (event) => {
+        const { name, value } = event.target;
+        setFormNovedad((prev) => ({
+            ...prev,
+            [name]: value
+        }));
+    };
+
+    const validarNovedad = () => {
+        if (!String(formNovedad.numero_lampara || "").trim()) {
+            return "El número de lámpara es obligatorio";
+        }
+        if (!String(formNovedad.fecha_novedad || "").trim()) {
+            return "La fecha de novedad es obligatoria";
+        }
+        if (formNovedad.tipo_novedad === "CAMBIO_TECNOLOGIA") {
+            if (!String(formNovedad.tecnologia_anterior || "").trim()) {
+                return "Selecciona la tecnología anterior";
+            }
+            if (!String(formNovedad.tecnologia_nueva || "").trim()) {
+                return "Selecciona la tecnología nueva";
+            }
+        }
+        return "";
+    };
+
+    const ejecutarActualizacionNovedad = async (payload) => {
+        if (!novedadMovimientos) {
+            return;
+        }
+
+        try {
+            setSubmitNovedadLoading(true);
+            const actualizada = await updateNovedad(Number(novedadMovimientos.id_novedad), payload);
+            success("Novedad actualizada correctamente");
+            setNovedadMovimientos((prev) => (prev ? { ...prev, ...actualizada } : prev));
+            await cargarDatos();
+        } catch (err) {
+            errorNotification(err.message || "No se pudo actualizar la novedad");
+        } finally {
+            setSubmitNovedadLoading(false);
+        }
+    };
+
+    const ejecutarGuardadoMovimiento = async (payload) => {
+        try {
+            setSubmitMovimientoLoading(true);
+
+            await createGasto({
+                ...payload,
+                fecha: formatDateForInput(novedadMovimientos.fecha_novedad)
+            });
+            success("Gasto asociado agregado correctamente");
+
+            limpiarFormularioMovimiento();
+            await cargarDatos();
+            setNovedadMovimientos(null);
+        } catch (err) {
+            errorNotification(err.message || "No se pudo guardar el movimiento");
+        } finally {
+            setSubmitMovimientoLoading(false);
+        }
     };
 
     const handleChangeMovimiento = (event) => {
@@ -270,22 +357,60 @@ export default function ReporteNovedades() {
             observacion: formMovimiento.observacion || null
         };
 
-        try {
-            setSubmitMovimientoLoading(true);
+        setPendingOtpAction({ tipo: "movimiento", payload });
+        setMostrarOtp(true);
+    };
 
-            await createGasto({
-                ...payload,
-                fecha: formatDateForInput(novedadMovimientos.fecha_novedad)
-            });
-            success("Gasto asociado agregado correctamente");
+    const handleSubmitNovedad = async (event) => {
+        event.preventDefault();
 
-            limpiarFormularioMovimiento();
-            await cargarDatos();
-        } catch (err) {
-            errorNotification(err.message || "No se pudo guardar el movimiento");
-        } finally {
-            setSubmitMovimientoLoading(false);
+        if (!novedadMovimientos) {
+            return;
         }
+
+        const validacionError = validarNovedad();
+        if (validacionError) {
+            setNovedadError(validacionError);
+            return;
+        }
+
+        setNovedadError("");
+
+        const payload = {
+            numero_lampara: String(formNovedad.numero_lampara).trim(),
+            tipo_novedad: formNovedad.tipo_novedad,
+            tecnologia_anterior:
+                formNovedad.tipo_novedad === "CAMBIO_TECNOLOGIA"
+                    ? String(formNovedad.tecnologia_anterior || "").trim().toLowerCase()
+                    : null,
+            tecnologia_nueva:
+                formNovedad.tipo_novedad === "CAMBIO_TECNOLOGIA"
+                    ? String(formNovedad.tecnologia_nueva || "").trim().toLowerCase()
+                    : null,
+            fecha_novedad: formNovedad.fecha_novedad,
+            observacion: String(formNovedad.observacion || "").trim() || null
+        };
+
+        setPendingOtpAction({ tipo: "novedad", payload });
+        setMostrarOtp(true);
+    };
+
+    const handleOtpVerificado = async () => {
+        if (!pendingOtpAction) {
+            setMostrarOtp(false);
+            return;
+        }
+
+        setMostrarOtp(false);
+        const accion = pendingOtpAction;
+        setPendingOtpAction(null);
+
+        if (accion.tipo === "novedad") {
+            await ejecutarActualizacionNovedad(accion.payload);
+            return;
+        }
+
+        await ejecutarGuardadoMovimiento(accion.payload);
     };
 
     return (
@@ -399,15 +524,19 @@ export default function ReporteNovedades() {
                                                     >
                                                         Ver detalle
                                                     </button>
-                                                    {movimientos.length === 0 && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => abrirEditorMovimientos(n)}
-                                                            style={buttonEditStyle}
-                                                        >
-                                                            Editar gastos
-                                                        </button>
-                                                    )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => abrirEditorMovimientos(n)}
+                                                        title={movimientos.length === 0 ? "Abrir formulario protegido con OTP" : "Solo disponible para novedades sin movimientos"}
+                                                        disabled={movimientos.length > 0}
+                                                        style={{
+                                                            ...buttonEditStyle,
+                                                            opacity: movimientos.length === 0 ? 1 : 0.65,
+                                                            cursor: movimientos.length === 0 ? "pointer" : "not-allowed"
+                                                        }}
+                                                    >
+                                                        Modificar con OTP
+                                                    </button>
                                                 </div>
                                             </td>
                                         </tr>
@@ -523,13 +652,119 @@ export default function ReporteNovedades() {
                     <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: "16px" }}>
                             <div>
-                                <h2 style={{ margin: 0, color: "#0a5c6d" }}>Editar gastos de la novedad #{novedadMovimientos.id_novedad}</h2>
+                                <h2 style={{ margin: 0, color: "#0a5c6d" }}>Modificar novedad #{novedadMovimientos.id_novedad}</h2>
                                 <p style={{ margin: "6px 0 0 0", color: "#64748b", fontSize: "13px" }}>
-                                    Lámpara {novedadMovimientos.numero_lampara || "Sin lámpara"} · Usa este formulario para asociar los gastos iniciales de la novedad.
+                                    Lámpara {novedadMovimientos.numero_lampara || "Sin lámpara"} · La información de esta novedad se cargó en el formulario para que la modifiques con OTP.
                                 </p>
                             </div>
-                            <button type="button" onClick={cerrarEditorMovimientos} style={closeStyle} disabled={submitMovimientoLoading}>×</button>
+                            <button type="button" onClick={cerrarEditorMovimientos} style={closeStyle} disabled={submitMovimientoLoading || submitNovedadLoading}>×</button>
                         </div>
+
+                        <form onSubmit={handleSubmitNovedad} style={{ marginBottom: "16px", padding: "12px", border: "1px solid #dbeafe", borderRadius: "10px", background: "#f8fbff" }}>
+                            <h3 style={{ marginTop: 0, marginBottom: "10px", color: "#0f7c90" }}>Datos de la novedad</h3>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+                                <div>
+                                    <label style={labelStyle}>Número de lámpara *</label>
+                                    <input
+                                        type="text"
+                                        name="numero_lampara"
+                                        value={formNovedad.numero_lampara}
+                                        onChange={handleChangeNovedad}
+                                        style={inputStyle}
+                                        disabled={submitNovedadLoading}
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label style={labelStyle}>Fecha de novedad *</label>
+                                    <input
+                                        type="date"
+                                        name="fecha_novedad"
+                                        value={formNovedad.fecha_novedad}
+                                        onChange={handleChangeNovedad}
+                                        style={inputStyle}
+                                        disabled={submitNovedadLoading}
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+                                <div>
+                                    <label style={labelStyle}>Tipo de novedad *</label>
+                                    <select
+                                        name="tipo_novedad"
+                                        value={formNovedad.tipo_novedad}
+                                        onChange={handleChangeNovedad}
+                                        style={inputStyle}
+                                        disabled={submitNovedadLoading}
+                                        required
+                                    >
+                                        {OPCIONES_TIPO_NOVEDAD.map((tipo) => (
+                                            <option key={tipo} value={tipo}>{tipo.replace("_", " ")}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style={labelStyle}>Observación</label>
+                                    <input
+                                        type="text"
+                                        name="observacion"
+                                        value={formNovedad.observacion}
+                                        onChange={handleChangeNovedad}
+                                        style={inputStyle}
+                                        disabled={submitNovedadLoading}
+                                    />
+                                </div>
+                            </div>
+
+                            {formNovedad.tipo_novedad === "CAMBIO_TECNOLOGIA" && (
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+                                    <div>
+                                        <label style={labelStyle}>Tecnología anterior *</label>
+                                        <select
+                                            name="tecnologia_anterior"
+                                            value={formNovedad.tecnologia_anterior}
+                                            onChange={handleChangeNovedad}
+                                            style={inputStyle}
+                                            disabled={submitNovedadLoading}
+                                            required
+                                        >
+                                            <option value="">Seleccione</option>
+                                            {OPCIONES_TECNOLOGIA.map((opcion) => (
+                                                <option key={opcion.value} value={opcion.value}>{opcion.label}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label style={labelStyle}>Tecnología nueva *</label>
+                                        <select
+                                            name="tecnologia_nueva"
+                                            value={formNovedad.tecnologia_nueva}
+                                            onChange={handleChangeNovedad}
+                                            style={inputStyle}
+                                            disabled={submitNovedadLoading}
+                                            required
+                                        >
+                                            <option value="">Seleccione</option>
+                                            {OPCIONES_TECNOLOGIA.map((opcion) => (
+                                                <option key={opcion.value} value={opcion.value}>{opcion.label}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+                            )}
+
+                            {novedadError && <div style={errorTextStyle}>{novedadError}</div>}
+
+                            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                                <button type="submit" style={buttonSaveStyle} disabled={submitNovedadLoading}>
+                                    {submitNovedadLoading ? "Guardando..." : "Guardar cambios con OTP"}
+                                </button>
+                            </div>
+                        </form>
+
+                        <h3 style={{ marginTop: 0, marginBottom: "8px", color: "#0f7c90" }}>Agregar gasto inicial (opcional)</h3>
 
                         <form onSubmit={handleSubmitMovimiento}>
                             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
@@ -559,8 +794,10 @@ export default function ReporteNovedades() {
                                         value={formMovimiento.cantidad_usada}
                                         onChange={handleChangeMovimiento}
                                         style={inputStyle}
-                                        disabled={submitMovimientoLoading}
+                                        disabled={submitMovimientoLoading || !formMovimiento.id_inventario}
                                         min="1"
+                                        step="1"
+                                        placeholder="Ingresa la cantidad"
                                         required
                                     />
                                 </div>
@@ -571,7 +808,16 @@ export default function ReporteNovedades() {
                                 <input
                                     type="text"
                                     value={busquedaInventario}
-                                    onChange={(e) => setBusquedaInventario(e.target.value)}
+                                    onChange={(e) => {
+                                        setBusquedaInventario(e.target.value);
+                                        // Limpiar selección cuando se busca
+                                        if (e.target.value.trim() !== "") {
+                                            setFormMovimiento((prev) => ({
+                                                ...prev,
+                                                id_inventario: ""
+                                            }));
+                                        }
+                                    }}
                                     placeholder="Buscar material por nombre o código..."
                                     style={{ ...inputStyle, marginBottom: "8px" }}
                                     disabled={submitMovimientoLoading}
@@ -579,7 +825,13 @@ export default function ReporteNovedades() {
                                 <select
                                     name="id_inventario"
                                     value={formMovimiento.id_inventario}
-                                    onChange={handleChangeMovimiento}
+                                    onChange={(e) => {
+                                        handleChangeMovimiento(e);
+                                        // Limpiar búsqueda cuando se selecciona un elemento
+                                        if (e.target.value) {
+                                            setBusquedaInventario("");
+                                        }
+                                    }}
                                     style={inputStyle}
                                     disabled={submitMovimientoLoading}
                                     required
@@ -594,7 +846,7 @@ export default function ReporteNovedades() {
                                                 key={i.id_inventario}
                                                 value={i.id_inventario}
                                                 disabled={stockDisponible <= 0}
-                                                style={{ color: stockBajo ? "#ef4444" : stockDisponible <= 0 ? "#b91c1c" : "#0f172a" }}
+                                                style={{ color: stockBajo ? "#c2410c" : stockDisponible <= 0 ? "#b91c1c" : "#0f172a" }}
                                             >
                                                 {i.codigo_elemento} - {i.elemento}{stockTexto}
                                             </option>
@@ -664,6 +916,15 @@ export default function ReporteNovedades() {
                     </div>
                 </div>
             )}
+
+            <OtpModal
+                isOpen={mostrarOtp}
+                onClose={() => {
+                    setMostrarOtp(false);
+                    setPendingOtpAction(null);
+                }}
+                onVerificado={handleOtpVerificado}
+            />
         </div>
     );
 }

@@ -1,4 +1,4 @@
--- Reinicia el esquema para pruebas eliminando tablas heredadas
+-- Nuevo esquema simplificado sin separación por lotes
 DROP TABLE IF EXISTS inventario_electricista CASCADE;
 DROP TABLE IF EXISTS movimiento_bodega CASCADE;
 DROP TABLE IF EXISTS lote_producto CASCADE;
@@ -61,36 +61,22 @@ CREATE TABLE novedad_luminaria (
         ON DELETE RESTRICT
 );
 
--- Productos disponibles en bodega
+-- Inventario de productos (estructura simplificada)
 CREATE TABLE producto (
     codigo                VARCHAR(50) PRIMARY KEY,
     nombre                VARCHAR(150) NOT NULL,
+    cantidad_inicial      INT NOT NULL DEFAULT 0 CHECK (cantidad_inicial >= 0),
+    precio_unitario       NUMERIC(12,3) NOT NULL DEFAULT 0 CHECK (precio_unitario >= 0),
+    fecha_compra          DATE,
     activo                BOOLEAN DEFAULT TRUE,
     created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at            TIMESTAMPTZ
 );
 
--- Lotes de productos comprados
-CREATE TABLE lote_producto (
-    id_lote               SERIAL PRIMARY KEY,
-    codigo_producto       VARCHAR(50) NOT NULL,
-    anio_compra           INT NOT NULL,
-    precio_unitario       NUMERIC(12,2) NOT NULL,
-    cantidad              INT NOT NULL,
-    fecha_compra          DATE NOT NULL,
-    created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at            TIMESTAMPTZ,
-
-    FOREIGN KEY (codigo_producto)
-        REFERENCES producto(codigo)
-);
-
-CREATE INDEX idx_lote_producto_codigo_producto ON lote_producto(codigo_producto);
-
 -- Movimientos en bodega (entradas, salidas y devoluciones)
 CREATE TABLE movimiento_bodega (
     id_movimiento         SERIAL PRIMARY KEY,
-    id_lote               INT NOT NULL,
+    codigo_producto       VARCHAR(50) NOT NULL,
     tipo_movimiento       VARCHAR(20) NOT NULL CHECK (
         tipo_movimiento IN (
             'ENTRADA',
@@ -102,23 +88,27 @@ CREATE TABLE movimiento_bodega (
     ),
     cantidad              INT NOT NULL CHECK (cantidad > 0),
     id_novedad_luminaria  BIGINT NULL,
+    id_electricista       VARCHAR(50) NULL,
+    codigo_pqr            VARCHAR(50) NULL,
     fecha                 TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     observacion           TEXT,
     created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at            TIMESTAMPTZ,
 
-    FOREIGN KEY (id_lote) REFERENCES lote_producto(id_lote),
-    FOREIGN KEY (id_novedad_luminaria) REFERENCES novedad_luminaria(id_novedad)
+    FOREIGN KEY (codigo_producto) REFERENCES producto(codigo),
+    FOREIGN KEY (id_novedad_luminaria) REFERENCES novedad_luminaria(id_novedad),
+    FOREIGN KEY (id_electricista) REFERENCES electricista(documento)
 );
 
-CREATE INDEX idx_movimiento_bodega_lote ON movimiento_bodega(id_lote);
+CREATE INDEX idx_movimiento_bodega_producto ON movimiento_bodega(codigo_producto);
 CREATE INDEX idx_movimiento_bodega_tipo ON movimiento_bodega(tipo_movimiento);
+CREATE INDEX idx_movimiento_bodega_fecha ON movimiento_bodega(fecha);
 
 -- Inventario asignado a electricistas para seguimiento en campo
 CREATE TABLE inventario_electricista (
     id_registro            SERIAL PRIMARY KEY,
     documento_electricista VARCHAR(50) NOT NULL,
-    id_lote                INT NOT NULL,
+    codigo_producto        VARCHAR(50) NOT NULL,
     cantidad               INT NOT NULL CHECK (cantidad >= 0),
     created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at             TIMESTAMPTZ,
@@ -126,10 +116,8 @@ CREATE TABLE inventario_electricista (
     FOREIGN KEY (documento_electricista)
         REFERENCES electricista(documento),
 
-    FOREIGN KEY (id_lote)
-        REFERENCES lote_producto(id_lote),
+    FOREIGN KEY (codigo_producto)
+        REFERENCES producto(codigo),
 
-    UNIQUE (documento_electricista, id_lote)
+    UNIQUE (documento_electricista, codigo_producto)
 );
-
-CREATE INDEX idx_inventario_electricista_lote ON inventario_electricista(id_lote);

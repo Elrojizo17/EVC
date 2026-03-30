@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { getInventario } from "../api/inventario.api";
 import { getElectricistas } from "../api/electricistas.api";
 import { getGastos, createGasto } from "../api/gastos.api";
@@ -40,6 +40,7 @@ export default function DevolucionesPrestamos() {
     const [despachoSeleccionado, setDespachoSeleccionado] = useState(null);
     const [ordenCodigoDespachos, setOrdenCodigoDespachos] = useState("asc");
     const [ordenCodigoMovimientos, setOrdenCodigoMovimientos] = useState("asc");
+    const [ordenFechaMovimientos, setOrdenFechaMovimientos] = useState("desc");
     const [loading, setLoading] = useState(false);
     const [submitLoading, setSubmitLoading] = useState(false);
     const { success, error: errorNotification } = useNotification();
@@ -179,9 +180,46 @@ export default function DevolucionesPrestamos() {
             return;
         }
 
-        if (formMovimiento.tipo_movimiento === "DEVOLUCION" && !despachoSeleccionado) {
-            errorNotification("Selecciona el despacho que estás devolviendo");
-            return;
+        // Validaciones específicas para DEVOLUCION
+        if (formMovimiento.tipo_movimiento === "DEVOLUCION") {
+            if (!despachoSeleccionado) {
+                errorNotification("Debes seleccionar el despacho (movimiento DESPACHADO) que estás devolviendo");
+                return;
+            }
+
+            // Validar que la novedad está vinculada
+            if (!despachoSeleccionado.id_novedad) {
+                errorNotification("El despacho seleccionado no tiene novedad asociada. No se puede procesar la devolución.");
+                return;
+            }
+
+            // Validar que el lote es el mismo
+            if (Number(despachoSeleccionado.id_lote) !== parseInt(formMovimiento.id_inventario)) {
+                errorNotification("El lote no coincide con el despacho original. Verifique que ha seleccionado correctamente.");
+                return;
+            }
+
+            // Validar la cantidad
+            const cantidadDespacho = Number(despachoSeleccionado.cantidad_usada || 0);
+            const cantidadDevuelta = parseInt(formMovimiento.cantidad, 10);
+            
+            if (isNaN(cantidadDevuelta) || cantidadDevuelta <= 0) {
+                errorNotification("La cantidad de devolución debe ser un número mayor a 0");
+                return;
+            }
+
+            if (cantidadDevuelta > cantidadDespacho) {
+                errorNotification(`❌ INTEGRIDAD FALLIDA: La devolución (${cantidadDevuelta}) no puede exceder lo despachado (${cantidadDespacho}). Novedad #${despachoSeleccionado.id_novedad}, Lote ${despachoSeleccionado.id_lote}`);
+                return;
+            }
+
+            // Log de validación exitosa
+            console.log(`✓ Validación DEVOLUCION exitosa:
+              - Novedad: #${despachoSeleccionado.id_novedad}
+              - Lote: ${despachoSeleccionado.id_lote}
+              - Cantidad: ${cantidadDevuelta}/${cantidadDespacho}
+              - Elemento: ${despachoSeleccionado.elemento}
+              - PQR Original: ${despachoSeleccionado.codigo_pqr}`);
         }
 
         const elementoSeleccionado = inventario.find(
@@ -201,15 +239,6 @@ export default function DevolucionesPrestamos() {
 
             if (stockDisponible <= 0) {
                 errorNotification("Este elemento está agotado. No puedes registrar más salidas.");
-                return;
-            }
-        }
-
-        if (formMovimiento.tipo_movimiento === "DEVOLUCION" && despachoSeleccionado) {
-            const cantidadDespacho = Number(despachoSeleccionado.cantidad_usada || 0);
-            const cantidadDevuelta = parseInt(formMovimiento.cantidad, 10);
-            if (cantidadDevuelta > cantidadDespacho) {
-                errorNotification(`La devolución no puede exceder lo despachado (${cantidadDespacho}).`);
                 return;
             }
         }
@@ -235,7 +264,7 @@ export default function DevolucionesPrestamos() {
             };
 
             await createGasto(datosEnvio);
-            success("Movimiento registrado exitosamente");
+            success("✓ Movimiento registrado exitosamente");
 
             resetForm();
             setValues({
@@ -273,12 +302,22 @@ export default function DevolucionesPrestamos() {
     const movimientosOrdenados = useMemo(() => {
         const lista = [...movimientos];
         return lista.sort((a, b) => {
+            // Primero ordena por fecha
+            const fechaA = new Date(a.fecha).getTime();
+            const fechaB = new Date(b.fecha).getTime();
+            const comparacionFecha = fechaA - fechaB;
+            
+            if (comparacionFecha !== 0) {
+                return ordenFechaMovimientos === "asc" ? comparacionFecha : -comparacionFecha;
+            }
+            
+            // Si las fechas son iguales, ordena por código/elemento
             const codigoA = String(a.codigo || a.codigo_elemento || a.elemento || "").toLowerCase();
             const codigoB = String(b.codigo || b.codigo_elemento || b.elemento || "").toLowerCase();
             const comparacion = codigoA.localeCompare(codigoB, "es", { numeric: true, sensitivity: "base" });
             return ordenCodigoMovimientos === "asc" ? comparacion : -comparacion;
         });
-    }, [movimientos, ordenCodigoMovimientos]);
+    }, [movimientos, ordenCodigoMovimientos, ordenFechaMovimientos]);
 
     const despachosFiltrados = useMemo(() => {
         const termino = (busquedaDespacho || "").toLowerCase().trim();
@@ -654,7 +693,39 @@ export default function DevolucionesPrestamos() {
                                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
                                     <thead>
                                         <tr style={{ borderBottom: "2px solid #e2e8f0", background: "#f8fafc" }}>
-                                            <th style={headerStyle}>Fecha</th>
+                                            <th style={headerStyle}>
+                                                <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                                                    Fecha
+                                                    <button
+                                                        type="button"
+                                                        title={ordenFechaMovimientos === "asc" ? "Orden actual: de antiguo a nuevo" : "Orden actual: de nuevo a antiguo"}
+                                                        onClick={() => setOrdenFechaMovimientos((prev) => (prev === "asc" ? "desc" : "asc"))}
+                                                        disabled={submitLoading}
+                                                        style={{
+                                                            width: "20px",
+                                                            height: "20px",
+                                                            border: "1px solid #cbd5e1",
+                                                            borderRadius: "5px",
+                                                            background: "white",
+                                                            color: "#0f172a",
+                                                            cursor: submitLoading ? "not-allowed" : "pointer",
+                                                            opacity: submitLoading ? 0.6 : 1,
+                                                            padding: 0,
+                                                            display: "inline-flex",
+                                                            alignItems: "center",
+                                                            justifyContent: "center"
+                                                        }}
+                                                    >
+                                                        <span style={{ display: "inline-flex", alignItems: "center", gap: "1px", fontSize: "8px", lineHeight: 1 }}>
+                                                            <span style={{ display: "inline-flex", flexDirection: "column", lineHeight: 0.8 }}>
+                                                                <span>A</span>
+                                                                <span>Z</span>
+                                                            </span>
+                                                            <span style={{ fontSize: "9px" }}>{ordenFechaMovimientos === "asc" ? "↓" : "↑"}</span>
+                                                        </span>
+                                                    </button>
+                                                </span>
+                                            </th>
                                             <th style={headerStyle}>
                                                 <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
                                                     Elemento
@@ -696,21 +767,73 @@ export default function DevolucionesPrestamos() {
                                     </thead>
                                     <tbody>
                                         {movimientosOrdenados.map((m) => (
-                                            <tr key={m.id_gasto} style={{ borderBottom: "1px solid #e2e8f0" }}>
-                                                <td style={cellStyle}>{new Date(m.fecha).toLocaleString()}</td>
-                                                <td style={cellStyle}>{m.elemento}</td>
-                                                <td style={cellStyle}>{m.tipo_movimiento}</td>
-                                                <td style={cellStyle}>{m.cantidad_usada}</td>
-                                                <td style={cellStyle}>{m.nombre_electricista || `ID ${m.id_electricista || "-"}`}</td>
-                                                <td style={cellStyle}>{m.codigo_pqr || "-"}</td>
-                                                <td style={cellStyle}>{m.observacion || "-"}</td>
-                                                <td style={cellStyle}>
-                                                    {(() => {
-                                                        const saldo = saldoPrestamoPorLote.get(m.id_lote) || 0;
-                                                        return saldo > 0 ? `${saldo} pendiente` : "-";
-                                                    })()}
-                                                </td>
-                                            </tr>
+                                            <React.Fragment key={m.id_gasto}>
+                                                <tr style={{ 
+                                                    borderBottom: "1px solid #e2e8f0",
+                                                    backgroundColor: m.tipo_movimiento === 'DEVOLUCION' ? '#f0fdf4' : 'white'
+                                                }}>
+                                                    <td style={cellStyle}>{new Date(m.fecha).toLocaleString()}</td>
+                                                    <td style={cellStyle}>{m.elemento}</td>
+                                                    <td style={cellStyle}>
+                                                        <span style={{
+                                                            padding: '4px 8px',
+                                                            borderRadius: '4px',
+                                                            fontSize: '12px',
+                                                            fontWeight: 'bold',
+                                                            backgroundColor: m.tipo_movimiento === 'DEVOLUCION' ? '#dcfce7' : (m.tipo_movimiento === 'PRESTADO' ? '#fef3c7' : '#e5e7eb'),
+                                                            color: m.tipo_movimiento === 'DEVOLUCION' ? '#15803d' : (m.tipo_movimiento === 'PRESTADO' ? '#b45309' : '#374151')
+                                                        }}>
+                                                            {m.tipo_movimiento}
+                                                        </span>
+                                                    </td>
+                                                    <td style={cellStyle}>
+                                                        {m.cantidad_usada}
+                                                        {m.tipo_movimiento === 'DEVOLUCION' && m.cantidad_original_despachada && (
+                                                            <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>
+                                                                de {m.cantidad_original_despachada}
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td style={cellStyle}>{m.nombre_electricista || `ID ${m.id_electricista || "-"}`}</td>
+                                                    <td style={cellStyle}>{m.codigo_pqr || "-"}</td>
+                                                    <td style={cellStyle}>{m.observacion || "-"}</td>
+                                                    <td style={cellStyle}>
+                                                        {(() => {
+                                                            const saldo = saldoPrestamoPorLote.get(m.id_lote) || 0;
+                                                            return saldo > 0 ? `${saldo} pendiente` : "-";
+                                                        })()}
+                                                    </td>
+                                                </tr>
+                                                {/* Fila adicional para DEVOLUCION: mostrar trazabilidad */}
+                                                {m.tipo_movimiento === 'DEVOLUCION' && (
+                                                    <tr style={{ 
+                                                        borderBottom: "1px solid #e2e8f0",
+                                                        backgroundColor: '#f9fce8',
+                                                        fontSize: '12px'
+                                                    }}>
+                                                        <td colSpan="8" style={{
+                                                            padding: '8px 12px',
+                                                            color: '#475569'
+                                                        }}>
+                                                            <strong>Trazabilidad:</strong> 
+                                                            {m.id_novedad ? (
+                                                                <>
+                                                                    {` Novedad #${m.id_novedad}`}
+                                                                    {m.numero_lampara && ` · Lámpara ${m.numero_lampara}`}
+                                                                    {m.tipo_novedad && ` · Tipo: ${m.tipo_novedad}`}
+                                                                    {m.total_devuelto_hasta_ahora !== undefined && (
+                                                                        <span style={{ marginLeft: '12px', color: m.total_devuelto_hasta_ahora > 0 ? '#dc2626' : '#16a34a' }}>
+                                                                            Total devuelto con este movimiento: {m.total_devuelto_hasta_ahora}
+                                                                        </span>
+                                                                    )}
+                                                                </>
+                                                            ) : (
+                                                                <span style={{ color: '#e11d48' }}>⚠️ SIN NOVEDAD VINCULADA - ERROR DE INTEGRIDAD</span>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </React.Fragment>
                                         ))}
                                     </tbody>
                                 </table>
