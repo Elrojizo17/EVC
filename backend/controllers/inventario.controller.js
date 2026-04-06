@@ -58,6 +58,26 @@ exports.getInventarioFlat = async (req, res) => {
                              AND mn.id_novedad_luminaria IS NULL
                         THEN mn.cantidad ELSE 0
                     END), 0) AS material_excedente
+                    ,COALESCE(SUM(CASE
+                        WHEN mn.tipo_movimiento = 'DESPACHADO'
+                             AND mn.id_novedad_luminaria IS NOT NULL
+                        THEN mn.cantidad ELSE 0
+                    END), 0) AS despachado_pqr
+                    ,COALESCE(SUM(CASE
+                        WHEN mn.tipo_movimiento = 'PRESTADO'
+                             AND mn.id_novedad_luminaria IS NOT NULL
+                        THEN mn.cantidad ELSE 0
+                    END), 0) AS prestamo_pqr
+                    ,COALESCE(SUM(CASE
+                        WHEN mn.tipo_movimiento = 'MATERIAL_EXCEDENTE'
+                             AND mn.id_novedad_luminaria IS NOT NULL
+                        THEN mn.cantidad ELSE 0
+                    END), 0) AS material_excedente_pqr
+                    ,COALESCE(SUM(CASE
+                        WHEN mn.tipo_movimiento = 'DEVOLUCION'
+                             AND mn.id_novedad_luminaria IS NOT NULL
+                        THEN mn.cantidad ELSE 0
+                    END), 0) AS devolucion_pqr
                 FROM movimientos_normalizados mn
                 GROUP BY mn.codigo_producto
             )
@@ -74,10 +94,17 @@ exports.getInventarioFlat = async (req, res) => {
                 COALESCE(rm.devolucion, 0) AS devolucion,
                 COALESCE(rm.despachado, 0) AS despachado,
                 COALESCE(rm.prestamo, 0) AS prestamo,
+                GREATEST(
+                    COALESCE(rm.despachado_pqr, 0)
+                    + COALESCE(rm.prestamo_pqr, 0)
+                    + COALESCE(rm.material_excedente_pqr, 0)
+                    - COALESCE(rm.devolucion_pqr, 0),
+                    0
+                ) AS gastado_pqr,
                 COALESCE(rm.material_excedente, 0) AS material_excedente,
                 p.precio_unitario AS costo_unitario,
                 p.fecha_compra,
-                -- Stock disponible: Inicial + Recibe + Devolucion - Despachado - Prestado - Material excedente
+                -- Stock disponible: Inicial + Recibe + Devoluciones - Salidas (incluye movimientos PQR)
                 GREATEST(
                     (
                         CASE
@@ -88,9 +115,13 @@ exports.getInventarioFlat = async (req, res) => {
                     )
                     + COALESCE(rm.cantidad_recibe_movimientos, 0)
                     + COALESCE(rm.devolucion, 0)
+                    + COALESCE(rm.devolucion_pqr, 0)
                     - COALESCE(rm.despachado, 0)
+                    - COALESCE(rm.despachado_pqr, 0)
                     - COALESCE(rm.prestamo, 0)
-                    - COALESCE(rm.material_excedente, 0),
+                    - COALESCE(rm.prestamo_pqr, 0)
+                    - COALESCE(rm.material_excedente, 0)
+                    - COALESCE(rm.material_excedente_pqr, 0),
                     0
                 ) AS stock_disponible,
                 GREATEST(

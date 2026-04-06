@@ -53,18 +53,19 @@ export default function ReporteGastosGenerales() {
                 return false;
             }
 
-            const fecha = new Date(g.fecha || g.fecha_registro);
+            const fechaIso = toIsoDateString(g.fecha || g.fecha_registro);
+            if (!fechaIso) {
+                return false;
+            }
+
             if (fechaDesde) {
-                const desde = new Date(fechaDesde);
-                if (fecha < desde) {
+                if (fechaIso < fechaDesde) {
                     return false;
                 }
             }
 
             if (fechaHasta) {
-                const hasta = new Date(fechaHasta);
-                hasta.setHours(23, 59, 59, 999);
-                if (fecha > hasta) {
+                if (fechaIso > fechaHasta) {
                     return false;
                 }
             }
@@ -218,10 +219,38 @@ export default function ReporteGastosGenerales() {
 }
 
 function formatDate(value) {
+    const isoDate = toIsoDateString(value);
+    if (!isoDate) return "";
+
+    const [year, month, day] = isoDate.split("-").map((part) => Number.parseInt(part, 10));
+    const dateUtc = new Date(Date.UTC(year, month - 1, day));
+
+    return new Intl.DateTimeFormat("es-CO", {
+        year: "2-digit",
+        month: "2-digit",
+        day: "2-digit",
+        timeZone: "UTC"
+    }).format(dateUtc);
+}
+
+function toIsoDateString(value) {
     if (!value) return "";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "";
-    return date.toLocaleDateString();
+
+    const texto = String(value).trim();
+    const match = texto.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (match) {
+        return match[1];
+    }
+
+    const parsed = new Date(texto);
+    if (Number.isNaN(parsed.getTime())) {
+        return "";
+    }
+
+    const year = parsed.getUTCFullYear();
+    const month = String(parsed.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(parsed.getUTCDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
 }
 
 function formatCurrency(value) {

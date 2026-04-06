@@ -360,14 +360,13 @@ export default function InventarioBodega() {
                 const encontrado = catalogoPorCodigo.get(value);
                 if (encontrado) {
                     nextRow.material = String(encontrado.elemento || "").trim() || "#N/D";
-                    if (!String(nextRow.costo_unitario || "").trim()) {
-                        const costo = Number(encontrado.costo_unitario || 0);
-                        nextRow.costo_unitario = Number.isFinite(costo)
-                            ? costo.toFixed(2).replace(".", ",")
-                            : "";
-                    }
+                    const costo = Number(encontrado.costo_unitario || 0);
+                    nextRow.costo_unitario = Number.isFinite(costo)
+                        ? costo.toFixed(2).replace(".", ",")
+                        : "";
                 } else {
                     nextRow.material = "#N/D";
+                    nextRow.costo_unitario = "";
                 }
             }
 
@@ -450,8 +449,22 @@ export default function InventarioBodega() {
                 return;
             }
 
-            if (parseCurrency(row.costo_unitario) <= 0) {
-                errorNotification(`Fila ${fila}: el costo unitario debe ser mayor a 0`);
+            if (parseCurrency(row.costo_unitario) < 0) {
+                errorNotification(`Fila ${fila}: el costo unitario no puede ser negativo`);
+                return;
+            }
+
+            const costoFilaCentavos = Math.round(parseCurrency(row.costo_unitario) * 100);
+            const costoCatalogoRaw = catalogoPorCodigo.get(row.codigo)?.costo_unitario ?? 0;
+            const costoCatalogoNumero = Number(costoCatalogoRaw);
+            const costoCatalogoNormalizado = Number.isFinite(costoCatalogoNumero)
+                ? costoCatalogoNumero
+                : parseCurrency(costoCatalogoRaw);
+            const costoCatalogoCentavos = Math.round(
+                costoCatalogoNormalizado * 100
+            );
+            if (costoFilaCentavos !== costoCatalogoCentavos) {
+                errorNotification(`Fila ${fila}: el costo unitario debe coincidir con el código ingresado`);
                 return;
             }
         }
@@ -491,11 +504,16 @@ export default function InventarioBodega() {
 
             for (let i = 0; i < filasNormalizadas.length; i += 1) {
                 const row = filasNormalizadas[i];
+                const precioCatalogoRaw = catalogoPorCodigo.get(row.codigo)?.costo_unitario ?? 0;
+                const precioCatalogoNumero = Number(precioCatalogoRaw);
+                const precioCatalogo = Number.isFinite(precioCatalogoNumero)
+                    ? precioCatalogoNumero
+                    : parseCurrency(precioCatalogoRaw);
                 await createLote({
                     codigo_producto: row.codigo,
                     numero_orden: ordenGlobal,
                     anio_compra: anioCompra,
-                    precio_unitario: parseCurrency(row.costo_unitario),
+                    precio_unitario: precioCatalogo,
                     cantidad: Number.parseInt(row.cantidad, 10),
                     fecha_compra: fechaCompra
                 });
@@ -515,13 +533,15 @@ export default function InventarioBodega() {
 
     const calcularCostoTotal = () => {
         return (inventarioConsolidado || []).reduce((total, item) => {
-        return total + (item.cantidad * item.costo_unitario);
+            const stockDisponible = Number(item.stock_disponible || 0);
+            const costoUnitario = Number(item.costo_unitario || 0);
+            return total + (stockDisponible * costoUnitario);
         }, 0);
     };
 
     const calcularTotalGastado = () => {
         return (inventarioConsolidado || []).reduce((total, item) => {
-            const cantidadGastada = Number(item.cantidad_gastada || 0);
+            const cantidadGastada = Number(item.gastado_pqr ?? item.cantidad_gastada ?? 0);
             const costoUnitario = Number(item.costo_unitario || 0);
             return total + (cantidadGastada * costoUnitario);
         }, 0);
@@ -561,7 +581,7 @@ export default function InventarioBodega() {
                 "Inicial": Number(item.cantidad || 0),
                 "Recibe": Number(item.entrada || 0),
                 "Devolución": Number(item.devolucion || 0),
-                "Gastado PQR": Number(item.despachado || 0),
+                "Gastado PQR": Number(item.gastado_pqr ?? item.despachado ?? 0),
                 "Préstamo": Number(item.prestamo || 0),
                 "Unid. existentes inventario": stockDisponible,
                 "Costo unitario": Number(item.costo_unitario || 0),
@@ -900,7 +920,7 @@ export default function InventarioBodega() {
                                             <td style={cellStyle}>{Number(item.cantidad || 0)}</td>
                                             <td style={cellStyle}>{Number(item.entrada || 0)}</td>
                                             <td style={cellStyle}>{Number(item.devolucion || 0)}</td>
-                                            <td style={cellStyle}>{Number(item.despachado || 0)}</td>
+                                            <td style={cellStyle}>{Number(item.gastado_pqr ?? item.despachado ?? 0)}</td>
                                             <td style={cellStyle}>{Number(item.prestamo || 0)}</td>
                                             <td style={{ ...cellStyle, fontWeight: "bold", fontSize: "15px" }}>
                                                 <span style={{
@@ -986,7 +1006,7 @@ export default function InventarioBodega() {
                         </div>
 
                         <p style={{ color: "#64748b", fontSize: "13px", marginTop: "8px", marginBottom: "12px" }}>
-                            Al escribir el código, el material se autocompleta. El número de orden se normaliza a 3 dígitos (ejemplo: 1 a ORDEN: 001).
+                            Al escribir el código, material y costo unitario se autocompletan. El número de orden se normaliza a 3 dígitos (ejemplo: 1 a ORDEN: 001).
                         </p>
 
                         <p style={{ color: "#475569", fontSize: "12px", marginTop: "-4px", marginBottom: "10px" }}>
@@ -1074,11 +1094,10 @@ export default function InventarioBodega() {
                                             <td style={cellStyle}>
                                                 <input
                                                     value={row.costo_unitario}
-                                                    onChange={(e) => actualizarFilaIngreso(row.id, "costo_unitario", e.target.value)}
-                                                    style={modalInputStyle}
+                                                    readOnly
+                                                    style={{ ...modalInputStyle, background: "#f8fafc", color: "#334155" }}
                                                     placeholder="0,00"
                                                     inputMode="decimal"
-                                                    disabled={formLoading}
                                                 />
                                             </td>
                                             <td style={cellStyle}>

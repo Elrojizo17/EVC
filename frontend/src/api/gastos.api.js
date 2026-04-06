@@ -23,3 +23,14 @@ export const createGasto = async (data) => {
     }
     return result;
 };
+
+export const deleteGasto = async (idGasto) => {
+    const res = await fetch(`${API_URL}/${idGasto}`, {
+        method: "DELETE"
+    });
+    const result = await res.json();
+    if (!res.ok || result.error) {
+        throw new Error(result.error || "Error eliminando gasto");
+    }
+    return result;
+};

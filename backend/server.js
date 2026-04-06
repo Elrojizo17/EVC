@@ -59,6 +59,18 @@ async function ensureDatabaseCompatibility() {
         DROP FUNCTION IF EXISTS movimiento_bodega_ai() CASCADE;
         DROP FUNCTION IF EXISTS lote_adjust_stock(bigint, integer) CASCADE;
     `);
+
+    await pool.query(`
+        CREATE OR REPLACE FUNCTION public.bloquear_modificacion_movimiento()
+        RETURNS TRIGGER AS $$
+        BEGIN
+            IF TG_OP = 'DELETE' AND current_setting('app.allow_movimiento_delete', true) = 'on' THEN
+                RETURN OLD;
+            END IF;
+            RAISE EXCEPTION 'No se permite modificar ni eliminar movimientos de bodega';
+        END;
+        $$ LANGUAGE plpgsql;
+    `);
 }
 
 async function startServer() {

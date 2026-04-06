@@ -32,6 +32,13 @@ const OPCIONES_TECNOLOGIA = [
     { value: "METAL_HALIDE", label: "Metal Halide" }
 ];
 
+const createGastoRow = () => ({
+    id: `gasto-row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    codigo: "",
+    material: "#N/D",
+    cantidad: ""
+});
+
 export default function NovedadCenso() {
     const [novedadActual, setNovedadActual] = useState(null);
     const [inventario, setInventario] = useState([]);
@@ -40,8 +47,7 @@ export default function NovedadCenso() {
     const [loading, setLoading] = useState(false);
     const [submitNovedadLoading, setSubmitNovedadLoading] = useState(false);
     const [submitGastoLoading, setSubmitGastoLoading] = useState(false);
-    const [gastosPendientes, setGastosPendientes] = useState([]);
-    const [busquedaInventario, setBusquedaInventario] = useState("");
+    const [filasGasto, setFilasGasto] = useState([createGastoRow()]);
     const [itemError, setItemError] = useState("");
     const [lamparaInfo, setLamparaInfo] = useState(null);
     const [lamparaInfoLoading, setLamparaInfoLoading] = useState(false);
@@ -81,9 +87,7 @@ export default function NovedadCenso() {
         setValues: setFormGasto
     } = useFormValidation(
         {
-            id_inventario: "",
             tipo_movimiento: "DESPACHADO",
-            cantidad_usada: "",
             id_electricista: "",
             codigo_pqr: "",
             observacion: ""
@@ -201,18 +205,17 @@ export default function NovedadCenso() {
         return texto === "" ? null : texto;
     };
 
-    const inventarioFiltrado = useMemo(() => {
-        const termino = busquedaInventario.trim().toLowerCase();
-        if (!termino) {
-            return inventario;
-        }
-
-        return inventario.filter((item) => {
-            const elemento = String(item.elemento || "").toLowerCase();
-            const codigo = String(item.codigo_elemento || "").toLowerCase();
-            return elemento.includes(termino) || codigo.includes(termino);
+    const inventarioPorCodigo = useMemo(() => {
+        const mapa = new Map();
+        (inventario || []).forEach((item) => {
+            const codigo = String(item.codigo_elemento || "").trim().toUpperCase();
+            if (!codigo) {
+                return;
+            }
+            mapa.set(codigo, item);
         });
-    }, [inventario, busquedaInventario]);
+        return mapa;
+    }, [inventario]);
 
     const handleSubmitNovedad = async (event) => {
         event.preventDefault();
@@ -257,6 +260,8 @@ export default function NovedadCenso() {
 
             const nuevaNovedad = await createNovedad(payload);
             setNovedadActual(nuevaNovedad);
+            setFilasGasto([createGastoRow()]);
+            setItemError("");
             success("Novedad registrada correctamente");
         } catch (err) {
             errorNotification(err.message || "Error registrando la novedad");
@@ -265,66 +270,44 @@ export default function NovedadCenso() {
         }
     };
 
-    const validarItemInventario = (idInventario, cantidad) => {
-        if (!idInventario || !cantidad) {
-            return { error: "Selecciona un elemento y una cantidad mayor a 0." };
-        }
-
-        const cantidadNum = parseInt(cantidad, 10);
-        if (!Number.isFinite(cantidadNum) || cantidadNum <= 0) {
-            return { error: "La cantidad debe ser un número positivo." };
-        }
-
-        const elemento = inventario.find((i) => i.id_inventario === Number(idInventario));
-        if (!elemento) {
-            return { error: "Elemento de inventario inválido." };
-        }
-
-        if (["DESPACHADO", "PRESTADO", "MATERIAL_EXCEDENTE"].includes(formGasto.tipo_movimiento)) {
-            const stockDisponible = Number(elemento.stock_disponible || 0);
-            if (stockDisponible <= 0) {
-                return { error: "Este elemento está agotado." };
-            }
-            if (cantidadNum > stockDisponible) {
-                return { error: `Stock insuficiente. Disponible: ${stockDisponible}, solicitado: ${cantidadNum}` };
-            }
-        }
-
-        return {
-            item: {
-                id_inventario: Number(elemento.id_inventario),
-                cantidad_usada: cantidadNum,
-                etiqueta: `${elemento.codigo_elemento} - ${elemento.elemento}`
-            }
-        };
+    const agregarFilaGasto = () => {
+        setFilasGasto((prev) => [...prev, createGastoRow()]);
     };
 
-    const handleAddItemPendiente = () => {
-        const { item, error } = validarItemInventario(formGasto.id_inventario, formGasto.cantidad_usada);
-        if (error) {
-            setItemError(error);
-            return;
-        }
+    const eliminarFilaGasto = (rowId) => {
+        setFilasGasto((prev) => {
+            if (prev.length === 1) {
+                return prev;
+            }
+            return prev.filter((row) => row.id !== rowId);
+        });
+    };
 
-        const yaExiste = gastosPendientes.some(
-            (pendiente) => pendiente.id_inventario === item.id_inventario
-        );
-        if (yaExiste) {
-            setItemError("Este elemento ya está en la lista pendiente.");
-            return;
-        }
+    const actualizarFilaGasto = (rowId, field, rawValue) => {
+        setFilasGasto((prev) => prev.map((row) => {
+            if (row.id !== rowId) {
+                return row;
+            }
 
-        setGastosPendientes((prev) => [...prev, item]);
-        setItemError("");
-        setFormGasto((prev) => ({
-            ...prev,
-            id_inventario: "",
-            cantidad_usada: ""
+            let value = rawValue;
+            if (field === "codigo") {
+                value = String(rawValue || "").toUpperCase().replace(/\s+/g, "");
+            }
+            if (field === "cantidad") {
+                value = String(rawValue || "").replace(/\D/g, "");
+            }
+
+            const nextRow = { ...row, [field]: value };
+
+            if (field === "codigo") {
+                const encontrado = inventarioPorCodigo.get(value);
+                nextRow.material = encontrado
+                    ? String(encontrado.elemento || "").trim() || "#N/D"
+                    : "#N/D";
+            }
+
+            return nextRow;
         }));
-    };
-
-    const handleRemovePendiente = (index) => {
-        setGastosPendientes((prev) => prev.filter((_, idx) => idx !== index));
     };
 
     const handleSubmitGasto = async (event) => {
@@ -353,25 +336,80 @@ export default function NovedadCenso() {
             return;
         }
 
-        let items = gastosPendientes;
-        if (items.length === 0) {
-            const { item, error } = validarItemInventario(
-                formGasto.id_inventario,
-                formGasto.cantidad_usada
-            );
-            if (error) {
-                setItemError(error);
+        const tiposSalida = new Set(["DESPACHADO", "PRESTADO", "MATERIAL_EXCEDENTE"]);
+        const codigosRegistrados = new Set();
+        const items = [];
+
+        for (let i = 0; i < filasGasto.length; i += 1) {
+            const row = filasGasto[i];
+            const fila = i + 1;
+            const codigo = String(row.codigo || "").trim().toUpperCase();
+
+            if (!codigo) {
+                setItemError(`Fila ${fila}: el código es obligatorio.`);
                 return;
             }
-            items = [item];
+
+            const elemento = inventarioPorCodigo.get(codigo);
+            if (!elemento) {
+                setItemError(`Fila ${fila}: el código no existe en inventario.`);
+                return;
+            }
+
+            if (!String(row.material || "").trim() || row.material === "#N/D") {
+                setItemError(`Fila ${fila}: el material no es válido.`);
+                return;
+            }
+
+            if (!String(row.cantidad || "").trim()) {
+                setItemError(`Fila ${fila}: la cantidad es obligatoria.`);
+                return;
+            }
+
+            const cantidadNum = Number.parseInt(row.cantidad, 10);
+            if (!Number.isFinite(cantidadNum) || cantidadNum <= 0) {
+                setItemError(`Fila ${fila}: la cantidad debe ser mayor a 0.`);
+                return;
+            }
+
+            if (codigosRegistrados.has(codigo)) {
+                setItemError(`Fila ${fila}: el código ${codigo} está repetido.`);
+                return;
+            }
+
+            if (tiposSalida.has(formGasto.tipo_movimiento)) {
+                const stockDisponible = Number(elemento.stock_disponible || 0);
+                if (stockDisponible <= 0) {
+                    setItemError(`Fila ${fila}: este elemento está agotado.`);
+                    return;
+                }
+                if (cantidadNum > stockDisponible) {
+                    setItemError(`Fila ${fila}: stock insuficiente. Disponible: ${stockDisponible}, solicitado: ${cantidadNum}`);
+                    return;
+                }
+            }
+
+            codigosRegistrados.add(codigo);
+            items.push({
+                codigo_producto: codigo,
+                cantidad_usada: cantidadNum,
+                etiqueta: `${codigo} - ${elemento.elemento}`
+            });
         }
+
+        if (items.length === 0) {
+            setItemError("Agrega al menos una fila de gasto.");
+            return;
+        }
+
+        setItemError("");
 
         setSubmitGastoLoading(true);
         try {
             const fechaMovimiento = formNovedad.fecha_novedad || (novedadActual && novedadActual.fecha_novedad ? String(novedadActual.fecha_novedad).slice(0, 10) : null);
             for (const item of items) {
                 const payload = {
-                    id_lote: item.id_inventario,
+                    codigo_producto: item.codigo_producto,
                     tipo_movimiento: formGasto.tipo_movimiento,
                     cantidad: item.cantidad_usada,
                     id_novedad_luminaria: novedadActual.id_novedad,
@@ -387,7 +425,7 @@ export default function NovedadCenso() {
                 ? "Gastos registrados correctamente"
                 : "Gasto registrado correctamente";
             success(mensaje);
-            setGastosPendientes([]);
+            setFilasGasto([createGastoRow()]);
             setItemError("");
             resetFormGasto();
             setFormGasto((prev) => ({
@@ -683,213 +721,69 @@ export default function NovedadCenso() {
                             </div>
 
                             <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
-                                <div>
-                                    <label style={labelStyle}>Tipo de movimiento *</label>
-                                    <select
-                                        name="tipo_movimiento"
-                                        value={formGasto.tipo_movimiento}
-                                        onChange={handleChangeGasto}
-                                        onBlur={handleBlurGasto}
-                                        required
-                                        style={inputStyle}
-                                    >
-                                        <option value="DESPACHADO">Despachado</option>
-                                        <option value="PRESTADO">Prestado</option>
-                                        <option value="MATERIAL_EXCEDENTE">Material excedente</option>
-                                        <option value="DEVOLUCION">Devolución</option>
-                                        <option value="ENTRADA">Entrada</option>
-                                    </select>
-                                    {touchedGasto.tipo_movimiento && errorsGasto.tipo_movimiento && (
-                                        <div style={errorTextStyle}>{errorsGasto.tipo_movimiento}</div>
-                                    )}
-                                </div>
-
-                                <div>
-                                    <label style={labelStyle}>Elemento de inventario *</label>
-                                    <input
-                                        type="text"
-                                        value={busquedaInventario}
-                                        onChange={(e) => {
-                                            setBusquedaInventario(e.target.value);
-                                            // Limpiar selección cuando se busca
-                                            if (e.target.value.trim() !== "") {
-                                                setFormGasto((prev) => ({
-                                                    ...prev,
-                                                    id_inventario: ""
-                                                }));
-                                            }
-                                        }}
-                                        placeholder="Buscar material por nombre o código..."
-                                        style={{ ...inputStyle, marginBottom: "8px" }}
-                                    />
-                                    <select
-                                        name="id_inventario"
-                                        value={formGasto.id_inventario}
-                                        onChange={(e) => {
-                                            handleChangeGasto(e);
-                                            // Limpiar búsqueda cuando se selecciona un elemento
-                                            if (e.target.value) {
-                                                setBusquedaInventario("");
-                                            }
-                                        }}
-                                        onBlur={handleBlurGasto}
-                                        style={inputStyle}
-                                    >
-                                        <option value="">Seleccione un elemento</option>
-                                        {inventarioFiltrado.map((i) => {
-                                            const stockDisponible = Number(i.stock_disponible || 0);
-                                            const stockBajo = stockDisponible > 0 && stockDisponible < umbralStockBajo;
-                                            const stockTexto = stockDisponible > 0 ? ` (Disponible: ${stockDisponible})` : " (AGOTADO)";
-                                            return (
-                                                <option
-                                                    key={i.id_inventario}
-                                                    value={i.id_inventario}
-                                                    disabled={stockDisponible <= 0}
-                                                    style={{ color: stockBajo ? "#c2410c" : stockDisponible <= 0 ? "#b91c1c" : "#0f172a" }}
-                                                >
-                                                    {i.codigo_elemento} - {i.elemento}
-                                                    {stockTexto}
-                                                </option>
-                                            );
-                                        })}
-                                    </select>
-                                    {!inventarioFiltrado.length && busquedaInventario.trim() && (
-                                        <div style={{ ...errorTextStyle, color: "#64748b" }}>
-                                            No se encontraron materiales con ese criterio de búsqueda.
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div>
-                                    <label style={labelStyle}>Cantidad usada *</label>
-                                    <input
-                                        type="number"
-                                        name="cantidad_usada"
-                                        value={formGasto.cantidad_usada}
-                                        onChange={handleChangeGasto}
-                                        onBlur={handleBlurGasto}
-                                        min="1"
-                                        step="1"
-                                        style={inputStyle}
-                                        placeholder="Ingresa la cantidad"
-                                        disabled={!formGasto.id_inventario}
-                                    />
-                                    {itemError && <div style={errorTextStyle}>{itemError}</div>}
-                                    {!formGasto.id_inventario && (
-                                        <div style={{ fontSize: "12px", color: "#94a3b8", marginTop: "4px" }}>
-                                            Selecciona un elemento primero
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div>
-                                    <button
-                                        type="button"
-                                        onClick={handleAddItemPendiente}
-                                        style={{
-                                            marginTop: "4px",
-                                            padding: "10px 14px",
-                                            background: "#e0f2fe",
-                                            color: "#0f172a",
-                                            borderRadius: "8px",
-                                            border: "none",
-                                            cursor: "pointer",
-                                            fontSize: "13px",
-                                            fontWeight: 500
-                                        }}
-                                    >
-                                        + Agregar a la lista
-                                    </button>
-                                </div>
-
-                                {gastosPendientes.length > 0 && (
-                                    <div
-                                        style={{
-                                            marginTop: "4px",
-                                            padding: "12px 14px",
-                                            borderRadius: "8px",
-                                            background: "#f9fafb",
-                                            border: "1px solid #e5e7eb",
-                                            fontSize: "12px"
-                                        }}
-                                    >
-                                        <div style={{ marginBottom: "6px", color: "#0f172a", fontWeight: 600 }}>
-                                            Elementos a registrar en esta novedad ({gastosPendientes.length})
-                                        </div>
-                                        <ul style={{ listStyle: "disc", paddingLeft: "18px", margin: 0 }}>
-                                            {gastosPendientes.map((item, idx) => (
-                                                <li
-                                                    key={`${item.id_inventario}-${idx}`}
-                                                    style={{
-                                                        marginBottom: "6px",
-                                                        color: "#475569",
-                                                        display: "flex",
-                                                        justifyContent: "space-between",
-                                                        gap: "12px"
-                                                    }}
-                                                >
-                                                    <span>
-                                                        {item.etiqueta} · Cantidad: {item.cantidad_usada}
-                                                    </span>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleRemovePendiente(idx)}
-                                                        style={{
-                                                            background: "transparent",
-                                                            border: "none",
-                                                            color: "#ef4444",
-                                                            cursor: "pointer",
-                                                            fontSize: "12px"
-                                                        }}
-                                                    >
-                                                        Quitar
-                                                    </button>
-                                                </li>
-                                            ))}
-                                        </ul>
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                                    <div>
+                                        <label style={labelStyle}>Tipo de movimiento *</label>
+                                        <select
+                                            name="tipo_movimiento"
+                                            value={formGasto.tipo_movimiento}
+                                            onChange={handleChangeGasto}
+                                            onBlur={handleBlurGasto}
+                                            required
+                                            style={inputStyle}
+                                        >
+                                            <option value="DESPACHADO">Despachado</option>
+                                            <option value="PRESTADO">Prestado</option>
+                                            <option value="MATERIAL_EXCEDENTE">Material excedente</option>
+                                            <option value="DEVOLUCION">Devolución</option>
+                                            <option value="ENTRADA">Entrada</option>
+                                        </select>
+                                        {touchedGasto.tipo_movimiento && errorsGasto.tipo_movimiento && (
+                                            <div style={errorTextStyle}>{errorsGasto.tipo_movimiento}</div>
+                                        )}
                                     </div>
-                                )}
 
-                                <div>
-                                    <label style={labelStyle}>Electricista responsable *</label>
-                                    <select
-                                        name="id_electricista"
-                                        value={formGasto.id_electricista}
-                                        onChange={handleChangeGasto}
-                                        onBlur={handleBlurGasto}
-                                        required
-                                        style={inputStyle}
-                                    >
-                                        <option value="">Seleccione electricista</option>
-                                        {electricistas.map((e) => (
-                                            <option
-                                                key={e.id_electricista}
-                                                value={e.id_electricista}
-                                                style={{ color: e.activo ? "#0f172a" : "#9ca3af" }}
-                                            >
-                                                {e.nombre} (Doc: {e.documento})
-                                                {!e.activo ? " • No disponible" : ""}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    {touchedGasto.id_electricista && errorsGasto.id_electricista && (
-                                        <div style={errorTextStyle}>{errorsGasto.id_electricista}</div>
-                                    )}
-                                    {formGasto.id_electricista && (() => {
-                                        const seleccionado = electricistas.find(
-                                            (e) => String(e.id_electricista) === String(formGasto.id_electricista)
-                                        );
+                                    <div>
+                                        <label style={labelStyle}>Electricista responsable *</label>
+                                        <select
+                                            name="id_electricista"
+                                            value={formGasto.id_electricista}
+                                            onChange={handleChangeGasto}
+                                            onBlur={handleBlurGasto}
+                                            required
+                                            style={inputStyle}
+                                        >
+                                            <option value="">Seleccione electricista</option>
+                                            {electricistas.map((e) => (
+                                                <option
+                                                    key={e.id_electricista}
+                                                    value={e.id_electricista}
+                                                    style={{ color: e.activo ? "#0f172a" : "#9ca3af" }}
+                                                >
+                                                    {e.nombre} (Doc: {e.documento})
+                                                    {!e.activo ? " • No disponible" : ""}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {touchedGasto.id_electricista && errorsGasto.id_electricista && (
+                                            <div style={errorTextStyle}>{errorsGasto.id_electricista}</div>
+                                        )}
+                                        {formGasto.id_electricista && (() => {
+                                            const seleccionado = electricistas.find(
+                                                (e) => String(e.id_electricista) === String(formGasto.id_electricista)
+                                            );
 
-                                        if (!seleccionado || seleccionado.activo) {
-                                            return null;
-                                        }
+                                            if (!seleccionado || seleccionado.activo) {
+                                                return null;
+                                            }
 
-                                        return (
-                                            <div style={{ ...errorTextStyle, color: "#9ca3af" }}>
-                                                Este electricista aparece en gris porque está marcado como no disponible.
-                                            </div>
-                                        );
-                                    })()}
+                                            return (
+                                                <div style={{ ...errorTextStyle, color: "#9ca3af" }}>
+                                                    Este electricista aparece en gris porque está marcado como no disponible.
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
                                 </div>
 
                                 <div>
@@ -919,6 +813,106 @@ export default function NovedadCenso() {
                                         placeholder="Detalles adicionales..."
                                     />
                                 </div>
+
+                                <div>
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", marginBottom: "8px", flexWrap: "wrap" }}>
+                                        <label style={{ ...labelStyle, marginBottom: 0 }}>Elementos de inventario *</label>
+                                        <button
+                                            type="button"
+                                            onClick={agregarFilaGasto}
+                                            disabled={submitGastoLoading}
+                                            style={{
+                                                padding: "8px 12px",
+                                                background: "#1e78bd",
+                                                color: "white",
+                                                border: "none",
+                                                borderRadius: "8px",
+                                                cursor: submitGastoLoading ? "not-allowed" : "pointer",
+                                                fontWeight: 600,
+                                                fontSize: "12px",
+                                                opacity: submitGastoLoading ? 0.6 : 1
+                                            }}
+                                        >
+                                            Agregar fila
+                                        </button>
+                                    </div>
+
+                                    <div style={{ overflowX: "auto", border: "1px solid #dbe5ef", borderRadius: "10px" }}>
+                                        <table style={{ width: "100%", minWidth: "700px", borderCollapse: "collapse", fontSize: "13px", tableLayout: "fixed" }}>
+                                            <colgroup>
+                                                <col style={{ width: "20%" }} />
+                                                <col style={{ width: "46%" }} />
+                                                <col style={{ width: "14%" }} />
+                                                <col style={{ width: "20%" }} />
+                                            </colgroup>
+                                            <thead>
+                                                <tr style={{ background: "#f8fafc", borderBottom: "1px solid #dbe5ef" }}>
+                                                    <th style={gastoHeaderStyle}>CÓDIGO</th>
+                                                    <th style={gastoHeaderStyle}>MATERIAL</th>
+                                                    <th style={gastoHeaderStyle}>CANTIDAD</th>
+                                                    <th style={gastoHeaderStyle}>ACCIÓN</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {filasGasto.map((row) => (
+                                                    <tr key={row.id} style={{ borderBottom: "1px solid #eef2f7" }}>
+                                                        <td style={gastoCellStyle}>
+                                                            <input
+                                                                value={row.codigo}
+                                                                onChange={(e) => actualizarFilaGasto(row.id, "codigo", e.target.value)}
+                                                                style={inputStyle}
+                                                                placeholder="Código"
+                                                                disabled={submitGastoLoading}
+                                                            />
+                                                        </td>
+                                                        <td style={gastoCellStyle}>
+                                                            <input
+                                                                value={row.material}
+                                                                readOnly
+                                                                style={{ ...inputStyle, background: "#f8fafc", color: row.material === "#N/D" ? "#b91c1c" : "#334155" }}
+                                                            />
+                                                        </td>
+                                                        <td style={gastoCellStyle}>
+                                                            <input
+                                                                value={row.cantidad}
+                                                                onChange={(e) => actualizarFilaGasto(row.id, "cantidad", e.target.value)}
+                                                                style={inputStyle}
+                                                                placeholder="0"
+                                                                inputMode="numeric"
+                                                                disabled={submitGastoLoading}
+                                                            />
+                                                        </td>
+                                                        <td style={gastoCellStyle}>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => eliminarFilaGasto(row.id)}
+                                                                style={{
+                                                                    border: "1px solid #fecaca",
+                                                                    color: "#b91c1c",
+                                                                    background: "#fff1f2",
+                                                                    borderRadius: "6px",
+                                                                    padding: "8px 10px",
+                                                                    fontWeight: 600,
+                                                                    cursor: filasGasto.length === 1 ? "not-allowed" : "pointer",
+                                                                    opacity: filasGasto.length === 1 ? 0.5 : 1
+                                                                }}
+                                                                disabled={submitGastoLoading || filasGasto.length === 1}
+                                                            >
+                                                                Quitar
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    <div style={{ marginTop: "6px", fontSize: "12px", color: "#64748b" }}>
+                                        Escribe el código del material y la cantidad a registrar. Se valida el stock automáticamente según el tipo de movimiento.
+                                    </div>
+                                </div>
+
+                                {itemError && <div style={errorTextStyle}>{itemError}</div>}
                             </div>
 
                             <button
@@ -971,5 +965,18 @@ const errorTextStyle = {
     marginTop: "4px",
     fontSize: "12px",
     color: "#dc2626"
+};
+
+const gastoHeaderStyle = {
+    textAlign: "left",
+    padding: "10px 12px",
+    color: "#0a5c6d",
+    fontSize: "12px",
+    fontWeight: 700
+};
+
+const gastoCellStyle = {
+    padding: "10px 12px",
+    verticalAlign: "top"
 };
 

@@ -176,7 +176,7 @@ router.post("/", async (req, res) => {
     }
 });
 
-// PUT editar novedad (solo si no tiene gastos/movimientos asociados)
+// PUT editar novedad
 router.put("/:id", async (req, res) => {
     const idNovedad = Number(req.params.id);
 
@@ -205,17 +205,6 @@ router.put("/:id", async (req, res) => {
         if (actualResult.rows.length === 0) {
             await client.query("ROLLBACK");
             return res.status(404).json({ error: "Novedad no encontrada" });
-        }
-
-        const movimientosResult = await client.query(
-            "SELECT COUNT(*)::int AS total FROM movimiento_bodega WHERE id_novedad_luminaria = $1",
-            [idNovedad]
-        );
-        const totalMovimientos = Number(movimientosResult.rows[0]?.total || 0);
-
-        if (totalMovimientos > 0) {
-            await client.query("ROLLBACK");
-            return res.status(409).json({ error: "No se puede editar la novedad porque tiene gastos asociados" });
         }
 
         const actual = actualResult.rows[0];

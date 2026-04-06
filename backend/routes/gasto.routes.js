@@ -104,12 +104,14 @@ router.post("/", async (req, res) => {
         // Calcular stock disponible (SOLO movimientos SIN NOVEDAD)
         const stockResult = await client.query(
             `SELECT 
-                $1::INT as cantidad_inicial
+                (
+                $1::INT
                 + COALESCE(SUM(CASE WHEN tipo_movimiento = 'ENTRADA' AND numero_orden IS NOT NULL AND id_novedad_luminaria IS NULL THEN cantidad ELSE 0 END), 0)
                 + COALESCE(SUM(CASE WHEN tipo_movimiento = 'DEVOLUCION' AND id_novedad_luminaria IS NULL THEN cantidad ELSE 0 END), 0)
                 - COALESCE(SUM(CASE WHEN tipo_movimiento = 'DESPACHADO' AND id_novedad_luminaria IS NULL THEN cantidad ELSE 0 END), 0)
                 - COALESCE(SUM(CASE WHEN tipo_movimiento = 'PRESTADO' AND id_novedad_luminaria IS NULL THEN cantidad ELSE 0 END), 0)
                 - COALESCE(SUM(CASE WHEN tipo_movimiento = 'MATERIAL_EXCEDENTE' AND id_novedad_luminaria IS NULL THEN cantidad ELSE 0 END), 0)
+                )
                 AS stock_disponible
             FROM movimiento_bodega
             WHERE codigo_producto = $2`,
@@ -216,6 +218,63 @@ router.post("/", async (req, res) => {
         await client.query('ROLLBACK');
         console.error("Error creando movimiento:", error);
         res.status(500).json({ error: error.message || "Error creando movimiento" });
+    } finally {
+        client.release();
+    }
+});
+
+// DELETE eliminar gasto (movimiento asociado a novedad)
+router.delete("/:id_gasto", async (req, res) => {
+    const idMovimiento = Number(req.params.id_gasto);
+
+    if (!Number.isInteger(idMovimiento) || idMovimiento <= 0) {
+        return res.status(400).json({ error: "ID de gasto inválido" });
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query("BEGIN");
+
+        const movimientoResult = await client.query(
+            `SELECT id_movimiento, id_novedad_luminaria, tipo_movimiento, codigo_producto, cantidad
+             FROM movimiento_bodega
+             WHERE id_movimiento = $1
+             FOR UPDATE`,
+            [idMovimiento]
+        );
+
+        if (movimientoResult.rows.length === 0) {
+            await client.query("ROLLBACK");
+            return res.status(404).json({ error: "Gasto no encontrado" });
+        }
+
+        const movimiento = movimientoResult.rows[0];
+
+        if (!movimiento.id_novedad_luminaria) {
+            await client.query("ROLLBACK");
+            return res.status(400).json({ error: "Solo se pueden eliminar gastos asociados a novedades" });
+        }
+
+        await client.query("SET LOCAL app.allow_movimiento_delete = 'on'");
+
+        await client.query(
+            "DELETE FROM movimiento_bodega WHERE id_movimiento = $1",
+            [idMovimiento]
+        );
+
+        await client.query("COMMIT");
+        return res.json({
+            message: "Gasto eliminado correctamente",
+            id_gasto: idMovimiento,
+            id_novedad_luminaria: movimiento.id_novedad_luminaria,
+            tipo_movimiento: movimiento.tipo_movimiento,
+            codigo_producto: movimiento.codigo_producto,
+            cantidad: movimiento.cantidad
+        });
+    } catch (error) {
+        await client.query("ROLLBACK");
+        console.error("Error eliminando gasto:", error);
+        return res.status(500).json({ error: error.message || "Error eliminando gasto" });
     } finally {
         client.release();
     }

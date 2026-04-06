@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { getNovedades, updateNovedad } from "../api/novedades.api";
-import { getGastos, createGasto } from "../api/gastos.api";
+import { getGastos, createGasto, deleteGasto } from "../api/gastos.api";
 import { getInventario } from "../api/inventario.api";
 import { getElectricistas } from "../api/electricistas.api";
-import { getUiConfig } from "../api/config.api";
 import { getCostoTotalMovimiento } from "../utils/gastos";
 import { useNotification } from "../hooks/useNotification";
-import { UMBRAL_STOCK_BAJO } from "../constants/inventario";
 import OtpModal from "../components/OtpModal";
 
 const OPCIONES_TIPO_NOVEDAD = ["MANTENIMIENTO", "CAMBIO_TECNOLOGIA", "REPARACION", "INSTALACION"];
@@ -15,6 +13,13 @@ const OPCIONES_TECNOLOGIA = [
     { value: "sodio", label: "Sodio" },
     { value: "metal_halide", label: "Metal Halide" }
 ];
+
+const createGastoRow = () => ({
+    id: `gasto-row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    codigo: "",
+    material: "#N/D",
+    cantidad: ""
+});
 
 export default function ReporteNovedades() {
     const [novedades, setNovedades] = useState([]);
@@ -26,11 +31,10 @@ export default function ReporteNovedades() {
     const [novedadDetalle, setNovedadDetalle] = useState(null);
     const [novedadMovimientos, setNovedadMovimientos] = useState(null);
     const [inventario, setInventario] = useState([]);
-    const [umbralStockBajo, setUmbralStockBajo] = useState(UMBRAL_STOCK_BAJO);
     const [electricistas, setElectricistas] = useState([]);
-    const [busquedaInventario, setBusquedaInventario] = useState("");
     const [submitNovedadLoading, setSubmitNovedadLoading] = useState(false);
     const [submitMovimientoLoading, setSubmitMovimientoLoading] = useState(false);
+    const [deleteMovimientoLoadingId, setDeleteMovimientoLoadingId] = useState(null);
     const [itemError, setItemError] = useState("");
     const [novedadError, setNovedadError] = useState("");
     const [formNovedad, setFormNovedad] = useState({
@@ -42,13 +46,12 @@ export default function ReporteNovedades() {
         observacion: ""
     });
     const [formMovimiento, setFormMovimiento] = useState({
-        id_inventario: "",
         tipo_movimiento: "DESPACHADO",
-        cantidad_usada: "",
         id_electricista: "",
         codigo_pqr: "",
         observacion: ""
     });
+    const [filasGasto, setFilasGasto] = useState([createGastoRow()]);
     const [ordenNovedades, setOrdenNovedades] = useState("asc");
     const [ordenCodigoMovimientos, setOrdenCodigoMovimientos] = useState("asc");
     const [mostrarOtp, setMostrarOtp] = useState(false);
@@ -57,20 +60,7 @@ export default function ReporteNovedades() {
 
     useEffect(() => {
         cargarDatos();
-        cargarConfigUi();
     }, []);
-
-    const cargarConfigUi = async () => {
-        try {
-            const config = await getUiConfig();
-            const umbral = Number(config?.stock_bajo_umbral);
-            if (Number.isFinite(umbral) && umbral > 0) {
-                setUmbralStockBajo(Math.floor(umbral));
-            }
-        } catch (err) {
-            console.warn("No se pudo cargar configuración UI, usando valor por defecto.", err);
-        }
-    };
 
     const cargarDatos = async () => {
         try {
@@ -175,17 +165,26 @@ export default function ReporteNovedades() {
         return movimientosDetalle.reduce((sum, g) => sum + getCostoTotalMovimiento(g), 0);
     }, [movimientosDetalle]);
 
-    const inventarioFiltrado = useMemo(() => {
-        const termino = busquedaInventario.trim().toLowerCase();
-        if (!termino) {
-            return inventario;
-        }
-        return inventario.filter((item) => {
-            const elemento = String(item.elemento || "").toLowerCase();
-            const codigo = String(item.codigo_elemento || "").toLowerCase();
-            return elemento.includes(termino) || codigo.includes(termino);
+    const inventarioPorCodigo = useMemo(() => {
+        const mapa = new Map();
+        (inventario || []).forEach((item) => {
+            const codigo = String(item.codigo_elemento || "").trim().toUpperCase();
+            if (!codigo) {
+                return;
+            }
+            mapa.set(codigo, item);
         });
-    }, [inventario, busquedaInventario]);
+        return mapa;
+    }, [inventario]);
+
+    const movimientosEdicion = useMemo(() => {
+        if (!novedadMovimientos) {
+            return [];
+        }
+
+        const lista = movimientosPorNovedad.get(Number(novedadMovimientos.id_novedad)) || [];
+        return [...lista].sort((a, b) => Number(b.id_gasto || 0) - Number(a.id_gasto || 0));
+    }, [movimientosPorNovedad, novedadMovimientos]);
 
     const abrirEditorMovimientos = (novedad) => {
         setNovedadMovimientos(novedad);
@@ -200,17 +199,16 @@ export default function ReporteNovedades() {
             observacion: novedad.observacion || ""
         });
         setFormMovimiento({
-            id_inventario: "",
             tipo_movimiento: "DESPACHADO",
-            cantidad_usada: "",
             id_electricista: "",
             codigo_pqr: "",
             observacion: ""
         });
+        setFilasGasto([createGastoRow()]);
     };
 
     const cerrarEditorMovimientos = () => {
-        if (submitMovimientoLoading || submitNovedadLoading) {
+        if (submitMovimientoLoading || submitNovedadLoading || deleteMovimientoLoadingId !== null) {
             return;
         }
         setNovedadMovimientos(null);
@@ -264,11 +262,23 @@ export default function ReporteNovedades() {
         try {
             setSubmitMovimientoLoading(true);
 
-            await createGasto({
-                ...payload,
-                fecha: formatDateForInput(novedadMovimientos.fecha_novedad)
-            });
-            success("Gasto asociado agregado correctamente");
+            const items = Array.isArray(payload.items) ? payload.items : [];
+            const fechaMovimiento = formatDateForInput(novedadMovimientos.fecha_novedad);
+
+            for (const item of items) {
+                await createGasto({
+                    codigo_producto: item.codigo_producto,
+                    tipo_movimiento: payload.tipo_movimiento,
+                    cantidad: item.cantidad_usada,
+                    id_novedad_luminaria: payload.id_novedad_luminaria,
+                    id_electricista: payload.id_electricista,
+                    codigo_pqr: payload.codigo_pqr,
+                    observacion: payload.observacion,
+                    ...(fechaMovimiento ? { fecha: fechaMovimiento } : {})
+                });
+            }
+
+            success(items.length > 1 ? "Gastos asociados agregados correctamente" : "Gasto asociado agregado correctamente");
 
             limpiarFormularioMovimiento();
             await cargarDatos();
@@ -280,6 +290,25 @@ export default function ReporteNovedades() {
         }
     };
 
+    const ejecutarEliminacionMovimiento = async (payload) => {
+        const idGasto = Number(payload?.id_gasto);
+        if (!Number.isInteger(idGasto) || idGasto <= 0) {
+            errorNotification("No se pudo identificar el gasto a eliminar");
+            return;
+        }
+
+        try {
+            setDeleteMovimientoLoadingId(idGasto);
+            await deleteGasto(idGasto);
+            success("Gasto eliminado correctamente");
+            await cargarDatos();
+        } catch (err) {
+            errorNotification(err.message || "No se pudo eliminar el gasto");
+        } finally {
+            setDeleteMovimientoLoadingId(null);
+        }
+    };
+
     const handleChangeMovimiento = (event) => {
         const { name, value } = event.target;
         setFormMovimiento((prev) => ({
@@ -288,50 +317,136 @@ export default function ReporteNovedades() {
         }));
     };
 
+    const agregarFilaGasto = () => {
+        setFilasGasto((prev) => [...prev, createGastoRow()]);
+    };
+
+    const eliminarFilaGasto = (rowId) => {
+        setFilasGasto((prev) => {
+            if (prev.length === 1) {
+                return prev;
+            }
+            return prev.filter((row) => row.id !== rowId);
+        });
+    };
+
+    const actualizarFilaGasto = (rowId, field, rawValue) => {
+        setFilasGasto((prev) => prev.map((row) => {
+            if (row.id !== rowId) {
+                return row;
+            }
+
+            let value = rawValue;
+            if (field === "codigo") {
+                value = String(rawValue || "").toUpperCase().replace(/\s+/g, "");
+            }
+            if (field === "cantidad") {
+                value = String(rawValue || "").replace(/\D/g, "");
+            }
+
+            const nextRow = { ...row, [field]: value };
+
+            if (field === "codigo") {
+                const encontrado = inventarioPorCodigo.get(value);
+                nextRow.material = encontrado
+                    ? String(encontrado.elemento || "").trim() || "#N/D"
+                    : "#N/D";
+            }
+
+            return nextRow;
+        }));
+    };
+
     const validarMovimiento = () => {
-        if (!formMovimiento.id_inventario) {
-            return "Selecciona un elemento de inventario";
-        }
-
-        const cantidad = Number(formMovimiento.cantidad_usada);
-        if (!Number.isFinite(cantidad) || cantidad <= 0) {
-            return "La cantidad debe ser mayor a 0";
-        }
-
         if (!formMovimiento.id_electricista) {
-            return "Selecciona un electricista";
+            return { error: "Selecciona un electricista", items: [] };
+        }
+
+        const electricistaSeleccionado = electricistas.find(
+            (e) => String(e.id_electricista) === String(formMovimiento.id_electricista)
+        );
+
+        if (!electricistaSeleccionado) {
+            return { error: "Selecciona un electricista válido", items: [] };
+        }
+
+        if (!electricistaSeleccionado.activo) {
+            return { error: "El electricista seleccionado no está disponible", items: [] };
         }
 
         if (!String(formMovimiento.codigo_pqr || "").trim()) {
-            return "El código PQR es obligatorio";
+            return { error: "El código PQR es obligatorio", items: [] };
         }
 
-        const elemento = inventario.find((i) => Number(i.id_inventario) === Number(formMovimiento.id_inventario));
-        if (!elemento) {
-            return "Elemento de inventario inválido";
-        }
+        const tiposSalida = new Set(["DESPACHADO", "PRESTADO", "MATERIAL_EXCEDENTE"]);
+        const codigosRegistrados = new Set();
+        const items = [];
 
-        const tiposSalida = ["DESPACHADO", "PRESTADO", "MATERIAL_EXCEDENTE"];
-        if (tiposSalida.includes(formMovimiento.tipo_movimiento)) {
-            const stockDisponible = Number(elemento.stock_disponible || 0);
-            if (cantidad > stockDisponible) {
-                return `Stock insuficiente. Disponible: ${stockDisponible}, solicitado: ${cantidad}`;
+        for (let i = 0; i < filasGasto.length; i += 1) {
+            const row = filasGasto[i];
+            const fila = i + 1;
+            const codigo = String(row.codigo || "").trim().toUpperCase();
+
+            if (!codigo) {
+                return { error: `Fila ${fila}: el código es obligatorio.`, items: [] };
             }
+
+            const elemento = inventarioPorCodigo.get(codigo);
+            if (!elemento) {
+                return { error: `Fila ${fila}: el código no existe en inventario.`, items: [] };
+            }
+
+            if (!String(row.material || "").trim() || row.material === "#N/D") {
+                return { error: `Fila ${fila}: el material no es válido.`, items: [] };
+            }
+
+            if (!String(row.cantidad || "").trim()) {
+                return { error: `Fila ${fila}: la cantidad es obligatoria.`, items: [] };
+            }
+
+            const cantidadNum = Number.parseInt(row.cantidad, 10);
+            if (!Number.isFinite(cantidadNum) || cantidadNum <= 0) {
+                return { error: `Fila ${fila}: la cantidad debe ser mayor a 0.`, items: [] };
+            }
+
+            if (codigosRegistrados.has(codigo)) {
+                return { error: `Fila ${fila}: el código ${codigo} está repetido.`, items: [] };
+            }
+
+            if (tiposSalida.has(formMovimiento.tipo_movimiento)) {
+                const stockDisponible = Number(elemento.stock_disponible || 0);
+                if (stockDisponible <= 0) {
+                    return { error: `Fila ${fila}: este elemento está agotado.`, items: [] };
+                }
+                if (cantidadNum > stockDisponible) {
+                    return { error: `Fila ${fila}: stock insuficiente. Disponible: ${stockDisponible}, solicitado: ${cantidadNum}`, items: [] };
+                }
+            }
+
+            codigosRegistrados.add(codigo);
+            items.push({
+                codigo_producto: codigo,
+                cantidad_usada: cantidadNum,
+                etiqueta: `${codigo} - ${elemento.elemento}`
+            });
         }
 
-        return "";
+        if (items.length === 0) {
+            return { error: "Agrega al menos una fila de gasto.", items: [] };
+        }
+
+        return { error: "", items };
     };
 
     const limpiarFormularioMovimiento = () => {
         setItemError("");
         setFormMovimiento({
-            id_inventario: "",
             tipo_movimiento: "DESPACHADO",
-            cantidad_usada: "",
             id_electricista: "",
             codigo_pqr: "",
             observacion: ""
         });
+        setFilasGasto([createGastoRow()]);
     };
 
     const handleSubmitMovimiento = async (event) => {
@@ -341,20 +456,21 @@ export default function ReporteNovedades() {
             return;
         }
 
-        const validacionError = validarMovimiento();
+        const { error: validacionError, items } = validarMovimiento();
         if (validacionError) {
             setItemError(validacionError);
             return;
         }
 
+        setItemError("");
+
         const payload = {
-            id_lote: Number(formMovimiento.id_inventario),
             tipo_movimiento: formMovimiento.tipo_movimiento,
-            cantidad: Number(formMovimiento.cantidad_usada),
             id_novedad_luminaria: Number(novedadMovimientos.id_novedad),
-            id_electricista: String(formMovimiento.id_electricista),
+            id_electricista: String(formMovimiento.id_electricista).trim(),
             codigo_pqr: String(formMovimiento.codigo_pqr).trim(),
-            observacion: formMovimiento.observacion || null
+            observacion: formMovimiento.observacion || null,
+            items
         };
 
         setPendingOtpAction({ tipo: "movimiento", payload });
@@ -395,6 +511,20 @@ export default function ReporteNovedades() {
         setMostrarOtp(true);
     };
 
+    const solicitarEliminarMovimientoConOtp = (movimiento) => {
+        const idGasto = Number(movimiento?.id_gasto);
+        if (!Number.isInteger(idGasto) || idGasto <= 0) {
+            errorNotification("No se pudo identificar el gasto a eliminar");
+            return;
+        }
+
+        setPendingOtpAction({
+            tipo: "eliminar_movimiento",
+            payload: { id_gasto: idGasto }
+        });
+        setMostrarOtp(true);
+    };
+
     const handleOtpVerificado = async () => {
         if (!pendingOtpAction) {
             setMostrarOtp(false);
@@ -407,6 +537,11 @@ export default function ReporteNovedades() {
 
         if (accion.tipo === "novedad") {
             await ejecutarActualizacionNovedad(accion.payload);
+            return;
+        }
+
+        if (accion.tipo === "eliminar_movimiento") {
+            await ejecutarEliminacionMovimiento(accion.payload);
             return;
         }
 
@@ -527,13 +662,8 @@ export default function ReporteNovedades() {
                                                     <button
                                                         type="button"
                                                         onClick={() => abrirEditorMovimientos(n)}
-                                                        title={movimientos.length === 0 ? "Abrir formulario protegido con OTP" : "Solo disponible para novedades sin movimientos"}
-                                                        disabled={movimientos.length > 0}
-                                                        style={{
-                                                            ...buttonEditStyle,
-                                                            opacity: movimientos.length === 0 ? 1 : 0.65,
-                                                            cursor: movimientos.length === 0 ? "pointer" : "not-allowed"
-                                                        }}
+                                                        title="Abrir formulario protegido con OTP"
+                                                        style={buttonEditStyle}
                                                     >
                                                         Modificar con OTP
                                                     </button>
@@ -657,7 +787,7 @@ export default function ReporteNovedades() {
                                     Lámpara {novedadMovimientos.numero_lampara || "Sin lámpara"} · La información de esta novedad se cargó en el formulario para que la modifiques con OTP.
                                 </p>
                             </div>
-                            <button type="button" onClick={cerrarEditorMovimientos} style={closeStyle} disabled={submitMovimientoLoading || submitNovedadLoading}>×</button>
+                            <button type="button" onClick={cerrarEditorMovimientos} style={closeStyle} disabled={submitMovimientoLoading || submitNovedadLoading || deleteMovimientoLoadingId !== null}>×</button>
                         </div>
 
                         <form onSubmit={handleSubmitNovedad} style={{ marginBottom: "16px", padding: "12px", border: "1px solid #dbeafe", borderRadius: "10px", background: "#f8fbff" }}>
@@ -764,115 +894,112 @@ export default function ReporteNovedades() {
                             </div>
                         </form>
 
+                        <h3 style={{ marginTop: 0, marginBottom: "8px", color: "#0f7c90" }}>Gastos registrados en esta novedad</h3>
+                        {movimientosEdicion.length === 0 ? (
+                            <p style={{ ...mutedText, marginTop: 0, marginBottom: "16px" }}>Esta novedad no tiene gastos registrados.</p>
+                        ) : (
+                            <div style={{ overflowX: "auto", marginBottom: "16px" }}>
+                                <table style={tableStyle}>
+                                    <thead>
+                                        <tr style={tableHeaderRowStyle}>
+                                            <th style={thStyle}>Fecha</th>
+                                            <th style={thStyle}>Elemento</th>
+                                            <th style={thStyle}>Tipo</th>
+                                            <th style={thStyle}>Cantidad</th>
+                                            <th style={thStyle}>PQR</th>
+                                            <th style={thStyle}>Acción</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {movimientosEdicion.map((mov) => (
+                                            <tr key={mov.id_gasto} style={tableRowStyle}>
+                                                <td style={tdStyle}>{formatDate(mov.fecha || mov.fecha_registro)}</td>
+                                                <td style={tdStyle}>{mov.elemento || "-"}</td>
+                                                <td style={tdStyle}>{mov.tipo_movimiento || "-"}</td>
+                                                <td style={tdStyle}>{mov.cantidad_usada || 0}</td>
+                                                <td style={tdStyle}>{mov.codigo_pqr || "-"}</td>
+                                                <td style={tdStyle}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => solicitarEliminarMovimientoConOtp(mov)}
+                                                        disabled={submitMovimientoLoading || submitNovedadLoading || deleteMovimientoLoadingId !== null}
+                                                        style={{
+                                                            ...buttonDeleteStyle,
+                                                            opacity: deleteMovimientoLoadingId === Number(mov.id_gasto) ? 0.7 : 1,
+                                                            cursor: submitMovimientoLoading || submitNovedadLoading || deleteMovimientoLoadingId !== null ? "not-allowed" : "pointer"
+                                                        }}
+                                                    >
+                                                        {deleteMovimientoLoadingId === Number(mov.id_gasto) ? "Eliminando..." : "Eliminar con OTP"}
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+
                         <h3 style={{ marginTop: 0, marginBottom: "8px", color: "#0f7c90" }}>Agregar gasto inicial (opcional)</h3>
 
                         <form onSubmit={handleSubmitMovimiento}>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
-                                <div>
-                                    <label style={labelStyle}>Tipo de movimiento *</label>
-                                    <select
-                                        name="tipo_movimiento"
-                                        value={formMovimiento.tipo_movimiento}
-                                        onChange={handleChangeMovimiento}
-                                        style={inputStyle}
-                                        disabled={submitMovimientoLoading}
-                                        required
-                                    >
-                                        <option value="DESPACHADO">Despachado</option>
-                                        <option value="PRESTADO">Prestado</option>
-                                        <option value="MATERIAL_EXCEDENTE">Material excedente</option>
-                                        <option value="DEVOLUCION">Devolución</option>
-                                        <option value="ENTRADA">Entrada</option>
-                                    </select>
-                                </div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                                    <div>
+                                        <label style={labelStyle}>Tipo de movimiento *</label>
+                                        <select
+                                            name="tipo_movimiento"
+                                            value={formMovimiento.tipo_movimiento}
+                                            onChange={handleChangeMovimiento}
+                                            style={inputStyle}
+                                            disabled={submitMovimientoLoading}
+                                            required
+                                        >
+                                            <option value="DESPACHADO">Despachado</option>
+                                            <option value="PRESTADO">Prestado</option>
+                                            <option value="MATERIAL_EXCEDENTE">Material excedente</option>
+                                            <option value="DEVOLUCION">Devolución</option>
+                                            <option value="ENTRADA">Entrada</option>
+                                        </select>
+                                    </div>
 
-                                <div>
-                                    <label style={labelStyle}>Cantidad *</label>
-                                    <input
-                                        type="number"
-                                        name="cantidad_usada"
-                                        value={formMovimiento.cantidad_usada}
-                                        onChange={handleChangeMovimiento}
-                                        style={inputStyle}
-                                        disabled={submitMovimientoLoading || !formMovimiento.id_inventario}
-                                        min="1"
-                                        step="1"
-                                        placeholder="Ingresa la cantidad"
-                                        required
-                                    />
-                                </div>
-                            </div>
+                                    <div>
+                                        <label style={labelStyle}>Electricista responsable *</label>
+                                        <select
+                                            name="id_electricista"
+                                            value={formMovimiento.id_electricista}
+                                            onChange={handleChangeMovimiento}
+                                            style={inputStyle}
+                                            disabled={submitMovimientoLoading}
+                                            required
+                                        >
+                                            <option value="">Seleccione electricista</option>
+                                            {electricistas.map((e) => (
+                                                <option
+                                                    key={e.id_electricista}
+                                                    value={e.id_electricista}
+                                                    style={{ color: e.activo ? "#0f172a" : "#9ca3af" }}
+                                                >
+                                                    {e.nombre} (Doc: {e.documento})
+                                                    {!e.activo ? " • No disponible" : ""}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {formMovimiento.id_electricista && (() => {
+                                            const seleccionado = electricistas.find(
+                                                (e) => String(e.id_electricista) === String(formMovimiento.id_electricista)
+                                            );
 
-                            <div style={{ marginBottom: "12px" }}>
-                                <label style={labelStyle}>Elemento de inventario *</label>
-                                <input
-                                    type="text"
-                                    value={busquedaInventario}
-                                    onChange={(e) => {
-                                        setBusquedaInventario(e.target.value);
-                                        // Limpiar selección cuando se busca
-                                        if (e.target.value.trim() !== "") {
-                                            setFormMovimiento((prev) => ({
-                                                ...prev,
-                                                id_inventario: ""
-                                            }));
-                                        }
-                                    }}
-                                    placeholder="Buscar material por nombre o código..."
-                                    style={{ ...inputStyle, marginBottom: "8px" }}
-                                    disabled={submitMovimientoLoading}
-                                />
-                                <select
-                                    name="id_inventario"
-                                    value={formMovimiento.id_inventario}
-                                    onChange={(e) => {
-                                        handleChangeMovimiento(e);
-                                        // Limpiar búsqueda cuando se selecciona un elemento
-                                        if (e.target.value) {
-                                            setBusquedaInventario("");
-                                        }
-                                    }}
-                                    style={inputStyle}
-                                    disabled={submitMovimientoLoading}
-                                    required
-                                >
-                                    <option value="">Seleccione un elemento</option>
-                                    {inventarioFiltrado.map((i) => {
-                                        const stockDisponible = Number(i.stock_disponible || 0);
-                                        const stockBajo = stockDisponible > 0 && stockDisponible < umbralStockBajo;
-                                        const stockTexto = stockDisponible > 0 ? ` (Disponible: ${stockDisponible})` : " (AGOTADO)";
-                                        return (
-                                            <option
-                                                key={i.id_inventario}
-                                                value={i.id_inventario}
-                                                disabled={stockDisponible <= 0}
-                                                style={{ color: stockBajo ? "#c2410c" : stockDisponible <= 0 ? "#b91c1c" : "#0f172a" }}
-                                            >
-                                                {i.codigo_elemento} - {i.elemento}{stockTexto}
-                                            </option>
-                                        );
-                                    })}
-                                </select>
-                            </div>
+                                            if (!seleccionado || seleccionado.activo) {
+                                                return null;
+                                            }
 
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
-                                <div>
-                                    <label style={labelStyle}>Electricista responsable *</label>
-                                    <select
-                                        name="id_electricista"
-                                        value={formMovimiento.id_electricista}
-                                        onChange={handleChangeMovimiento}
-                                        style={inputStyle}
-                                        disabled={submitMovimientoLoading}
-                                        required
-                                    >
-                                        <option value="">Seleccione electricista</option>
-                                        {electricistas.map((e) => (
-                                            <option key={e.id_electricista} value={e.documento || e.id_electricista}>
-                                                {e.nombre} (Doc: {e.documento})
-                                            </option>
-                                        ))}
-                                    </select>
+                                            return (
+                                                <div style={{ ...errorTextStyle, color: "#9ca3af" }}>
+                                                    Este electricista aparece en gris porque está marcado como no disponible.
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
                                 </div>
 
                                 <div>
@@ -884,20 +1011,119 @@ export default function ReporteNovedades() {
                                         onChange={handleChangeMovimiento}
                                         style={inputStyle}
                                         disabled={submitMovimientoLoading}
+                                        placeholder="Ej: PQR-12345"
                                         required
                                     />
                                 </div>
-                            </div>
 
-                            <div style={{ marginTop: "12px" }}>
-                                <label style={labelStyle}>Observación</label>
-                                <textarea
-                                    name="observacion"
-                                    value={formMovimiento.observacion}
-                                    onChange={handleChangeMovimiento}
-                                    style={{ ...inputStyle, minHeight: "90px", resize: "vertical" }}
-                                    disabled={submitMovimientoLoading}
-                                />
+                                <div>
+                                    <label style={labelStyle}>Observación</label>
+                                    <textarea
+                                        name="observacion"
+                                        value={formMovimiento.observacion}
+                                        onChange={handleChangeMovimiento}
+                                        style={{ ...inputStyle, minHeight: "80px", resize: "vertical" }}
+                                        disabled={submitMovimientoLoading}
+                                        placeholder="Detalles adicionales..."
+                                    />
+                                </div>
+                                <div>
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", marginBottom: "8px", flexWrap: "wrap" }}>
+                                        <label style={{ ...labelStyle, marginBottom: 0 }}>Elementos de inventario *</label>
+                                        <button
+                                            type="button"
+                                            onClick={agregarFilaGasto}
+                                            disabled={submitMovimientoLoading}
+                                            style={{
+                                                padding: "8px 12px",
+                                                background: "#1e78bd",
+                                                color: "white",
+                                                border: "none",
+                                                borderRadius: "8px",
+                                                cursor: submitMovimientoLoading ? "not-allowed" : "pointer",
+                                                fontWeight: 600,
+                                                fontSize: "12px",
+                                                opacity: submitMovimientoLoading ? 0.6 : 1
+                                            }}
+                                        >
+                                            Agregar fila
+                                        </button>
+                                    </div>
+
+                                    <div style={{ overflowX: "auto", border: "1px solid #dbe5ef", borderRadius: "10px" }}>
+                                        <table style={{ width: "100%", minWidth: "700px", borderCollapse: "collapse", fontSize: "13px", tableLayout: "fixed" }}>
+                                            <colgroup>
+                                                <col style={{ width: "24%" }} />
+                                                <col style={{ width: "44%" }} />
+                                                <col style={{ width: "14%" }} />
+                                                <col style={{ width: "18%" }} />
+                                            </colgroup>
+                                            <thead>
+                                                <tr style={{ background: "#f8fafc", borderBottom: "1px solid #dbe5ef" }}>
+                                                    <th style={gastoHeaderStyle}>CÓDIGO</th>
+                                                    <th style={gastoHeaderStyle}>MATERIAL</th>
+                                                    <th style={gastoHeaderStyle}>CANTIDAD</th>
+                                                    <th style={gastoHeaderStyle}>ACCIÓN</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {filasGasto.map((row) => (
+                                                    <tr key={row.id} style={{ borderBottom: "1px solid #eef2f7" }}>
+                                                        <td style={gastoCellStyle}>
+                                                            <input
+                                                                value={row.codigo}
+                                                                onChange={(e) => actualizarFilaGasto(row.id, "codigo", e.target.value)}
+                                                                style={inputStyle}
+                                                                placeholder="Código"
+                                                                disabled={submitMovimientoLoading}
+                                                            />
+                                                        </td>
+                                                        <td style={gastoCellStyle}>
+                                                            <input
+                                                                value={row.material}
+                                                                readOnly
+                                                                style={{ ...inputStyle, background: "#f8fafc", color: row.material === "#N/D" ? "#b91c1c" : "#334155" }}
+                                                            />
+                                                        </td>
+                                                        <td style={gastoCellStyle}>
+                                                            <input
+                                                                value={row.cantidad}
+                                                                onChange={(e) => actualizarFilaGasto(row.id, "cantidad", e.target.value)}
+                                                                style={inputStyle}
+                                                                placeholder="0"
+                                                                inputMode="numeric"
+                                                                disabled={submitMovimientoLoading}
+                                                            />
+                                                        </td>
+                                                        <td style={gastoCellStyle}>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => eliminarFilaGasto(row.id)}
+                                                                style={{
+                                                                    border: "1px solid #fecaca",
+                                                                    color: "#b91c1c",
+                                                                    background: "#fff1f2",
+                                                                    borderRadius: "6px",
+                                                                    padding: "8px 10px",
+                                                                    fontWeight: 600,
+                                                                    cursor: filasGasto.length === 1 ? "not-allowed" : "pointer",
+                                                                    opacity: filasGasto.length === 1 ? 0.5 : 1
+                                                                }}
+                                                                disabled={submitMovimientoLoading || filasGasto.length === 1}
+                                                            >
+                                                                Quitar
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    <div style={{ marginTop: "6px", fontSize: "12px", color: "#64748b" }}>
+                                        Escribe el código del material y la cantidad a registrar. Se valida el stock automáticamente según el tipo de movimiento.
+                                    </div>
+                                </div>
                             </div>
 
                             {itemError && (
@@ -945,10 +1171,18 @@ function Card({ title, value }) {
 }
 
 function formatDate(value) {
-    if (!value) return "";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "";
-    return date.toLocaleDateString();
+    const isoDate = toIsoDateString(value);
+    if (!isoDate) return "";
+
+    const [year, month, day] = isoDate.split("-").map((part) => Number.parseInt(part, 10));
+    const dateUtc = new Date(Date.UTC(year, month - 1, day));
+
+    return new Intl.DateTimeFormat("es-CO", {
+        year: "2-digit",
+        month: "2-digit",
+        day: "2-digit",
+        timeZone: "UTC"
+    }).format(dateUtc);
 }
 
 function formatCurrency(value) {
@@ -960,10 +1194,27 @@ function formatCurrency(value) {
 }
 
 function formatDateForInput(value) {
+    return toIsoDateString(value);
+}
+
+function toIsoDateString(value) {
     if (!value) return "";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "";
-    return date.toISOString().split("T")[0];
+
+    const texto = String(value).trim();
+    const match = texto.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (match) {
+        return match[1];
+    }
+
+    const parsed = new Date(texto);
+    if (Number.isNaN(parsed.getTime())) {
+        return "";
+    }
+
+    const year = parsed.getUTCFullYear();
+    const month = String(parsed.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(parsed.getUTCDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
 }
 
 const panelStyle = {
@@ -992,6 +1243,17 @@ const thStyle = { padding: "8px 10px", textAlign: "left", color: "#0a5c6d" };
 const tdStyle = { padding: "8px 10px", color: "#475569" };
 const labelStyle = { display: "block", marginBottom: "6px", fontSize: "12px", color: "#334155", fontWeight: "600" };
 const errorTextStyle = { marginTop: "6px", fontSize: "12px", color: "#dc2626" };
+const gastoHeaderStyle = {
+    textAlign: "left",
+    padding: "10px 12px",
+    color: "#0a5c6d",
+    fontSize: "12px",
+    fontWeight: 700
+};
+const gastoCellStyle = {
+    padding: "10px 12px",
+    verticalAlign: "top"
+};
 
 const buttonDetailStyle = {
     border: "none",
@@ -1011,6 +1273,16 @@ const buttonEditStyle = {
     background: "white",
     color: "#1e78bd",
     cursor: "pointer",
+    fontSize: "12px",
+    fontWeight: "600"
+};
+
+const buttonDeleteStyle = {
+    border: "1px solid #fecaca",
+    borderRadius: "6px",
+    padding: "6px 10px",
+    background: "#fff1f2",
+    color: "#b91c1c",
     fontSize: "12px",
     fontWeight: "600"
 };
