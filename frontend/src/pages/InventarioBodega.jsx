@@ -539,13 +539,16 @@ export default function InventarioBodega() {
         }, 0);
     };
 
-    const calcularTotalGastado = () => {
-        return (inventarioConsolidado || []).reduce((total, item) => {
-            const cantidadGastada = Number(item.gastado_pqr ?? item.cantidad_gastada ?? 0);
-            const costoUnitario = Number(item.costo_unitario || 0);
-            return total + (cantidadGastada * costoUnitario);
+    const totalGastadoReparaciones = useMemo(() => {
+        return (gastos || []).reduce((total, gasto) => {
+            const tipoMovimiento = String(gasto?.tipo_movimiento || "").toUpperCase();
+            if (tipoMovimiento === "ENTRADA") {
+                return total;
+            }
+
+            return total + getCostoTotalMovimiento(gasto);
         }, 0);
-    };
+    }, [gastos]);
 
     const inventarioFiltrado = useMemo(() => {
         const termino = busqueda.toLowerCase();
@@ -583,6 +586,7 @@ export default function InventarioBodega() {
                 "Devolución": Number(item.devolucion || 0),
                 "Gastado PQR": Number(item.gastado_pqr ?? item.despachado ?? 0),
                 "Préstamo": Number(item.prestamo || 0),
+                "Material Excedente": Number(item.material_excedente || 0),
                 "Unid. existentes inventario": stockDisponible,
                 "Costo unitario": Number(item.costo_unitario || 0),
                 "Valor final": stockDisponible * Number(item.costo_unitario || 0)
@@ -594,8 +598,8 @@ export default function InventarioBodega() {
         const formatoMoneda = '"$" #,##0.00';
         for (let rowIndex = 0; rowIndex < dataExcel.length; rowIndex += 1) {
             const rowExcel = rowIndex + 1;
-            const cellCostoUnitario = XLSX.utils.encode_cell({ r: rowExcel, c: 9 });
-            const cellValorFinal = XLSX.utils.encode_cell({ r: rowExcel, c: 10 });
+            const cellCostoUnitario = XLSX.utils.encode_cell({ r: rowExcel, c: 10 });
+            const cellValorFinal = XLSX.utils.encode_cell({ r: rowExcel, c: 11 });
 
             if (ws[cellCostoUnitario]) {
                 ws[cellCostoUnitario].t = "n";
@@ -617,6 +621,7 @@ export default function InventarioBodega() {
             { wch: 12 },
             { wch: 12 },
             { wch: 10 },
+            { wch: 18 },
             { wch: 24 },
             { wch: 14 },
             { wch: 14 }
@@ -763,7 +768,7 @@ export default function InventarioBodega() {
                         Total gastado en reparaciones
                     </div>
                     <div style={{ fontSize: "23px", fontWeight: "700", color: "#b45309" }}>
-                        ${formatCurrency(calcularTotalGastado())}
+                        ${formatCurrency(totalGastadoReparaciones)}
                     </div>
                 </div>
             </div>
@@ -898,6 +903,7 @@ export default function InventarioBodega() {
                                     <th style={headerStyle}>Devolución</th>
                                     <th style={headerStyle}>Gastado PQR</th>
                                     <th style={headerStyle}>Préstamo</th>
+                                    <th style={headerStyle}>Material Excedente</th>
                                     <th style={headerStyle}>Unid. existentes inventario</th>
                                     <th style={headerStyle}>Costo unitario</th>
                                     <th style={headerStyle}>Valor final</th>
@@ -922,6 +928,7 @@ export default function InventarioBodega() {
                                             <td style={cellStyle}>{Number(item.devolucion || 0)}</td>
                                             <td style={cellStyle}>{Number(item.gastado_pqr ?? item.despachado ?? 0)}</td>
                                             <td style={cellStyle}>{Number(item.prestamo || 0)}</td>
+                                            <td style={cellStyle}>{Number(item.material_excedente || 0)}</td>
                                             <td style={{ ...cellStyle, fontWeight: "bold", fontSize: "15px" }}>
                                                 <span style={{
                                                     color: stockAgotado ? "#b91c1c" : stockBajo ? "#c2410c" : "#059669",

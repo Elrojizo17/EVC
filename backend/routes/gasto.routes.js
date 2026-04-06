@@ -101,16 +101,19 @@ router.post("/", async (req, res) => {
         const producto = prodCheck.rows[0];
         const cantidadSolicitada = Number(cantidad);
 
-        // Calcular stock disponible (SOLO movimientos SIN NOVEDAD)
+        if (!Number.isFinite(cantidadSolicitada) || cantidadSolicitada <= 0) {
+            throw new Error("La cantidad debe ser mayor a 0");
+        }
+
+        // Calcular stock disponible real de inventario (sin descontar material excedente)
         const stockResult = await client.query(
             `SELECT 
                 (
                 $1::INT
-                + COALESCE(SUM(CASE WHEN tipo_movimiento = 'ENTRADA' AND numero_orden IS NOT NULL AND id_novedad_luminaria IS NULL THEN cantidad ELSE 0 END), 0)
-                + COALESCE(SUM(CASE WHEN tipo_movimiento = 'DEVOLUCION' AND id_novedad_luminaria IS NULL THEN cantidad ELSE 0 END), 0)
-                - COALESCE(SUM(CASE WHEN tipo_movimiento = 'DESPACHADO' AND id_novedad_luminaria IS NULL THEN cantidad ELSE 0 END), 0)
-                - COALESCE(SUM(CASE WHEN tipo_movimiento = 'PRESTADO' AND id_novedad_luminaria IS NULL THEN cantidad ELSE 0 END), 0)
-                - COALESCE(SUM(CASE WHEN tipo_movimiento = 'MATERIAL_EXCEDENTE' AND id_novedad_luminaria IS NULL THEN cantidad ELSE 0 END), 0)
+                + COALESCE(SUM(CASE WHEN tipo_movimiento = 'ENTRADA' AND numero_orden IS NOT NULL THEN cantidad ELSE 0 END), 0)
+                + COALESCE(SUM(CASE WHEN tipo_movimiento = 'DEVOLUCION' THEN cantidad ELSE 0 END), 0)
+                - COALESCE(SUM(CASE WHEN tipo_movimiento = 'DESPACHADO' THEN cantidad ELSE 0 END), 0)
+                - COALESCE(SUM(CASE WHEN tipo_movimiento = 'PRESTADO' THEN cantidad ELSE 0 END), 0)
                 )
                 AS stock_disponible
             FROM movimiento_bodega
@@ -121,13 +124,6 @@ router.post("/", async (req, res) => {
         const stockDisponible = stockResult.rows.length > 0
             ? Math.max(0, Number(stockResult.rows[0].stock_disponible || 0))
             : Math.max(0, producto.cantidad_inicial);
-
-        // Validar cantidad para movimientos de DESPACHADO o similar
-        if (['DESPACHADO', 'PRESTADO', 'MATERIAL_EXCEDENTE'].includes(tipo_movimiento)) {
-            if (stockDisponible < cantidadSolicitada) {
-                throw new Error(`Stock insuficiente. Disponible: ${stockDisponible}, Solicitado: ${cantidadSolicitada}`);
-            }
-        }
 
         const electricistaDocumento = id_electricista ? String(id_electricista).trim() : "";
         if (!electricistaDocumento && tipo_movimiento !== 'ENTRADA') {
@@ -209,11 +205,62 @@ router.post("/", async (req, res) => {
             codigo_pqr || null
         ];
 
-        const result = await client.query(query, values);
+        const registrarMovimiento = async (tipo, cantidadMovimiento, idNovedadMovimiento = (id_novedad_luminaria || null), observacionMovimiento = (observacion || null)) => {
+            const movimientoValues = [
+                prodCode,
+                tipo,
+                Number(cantidadMovimiento),
+                numero_orden || null,
+                idNovedadMovimiento,
+                observacionMovimiento,
+                fechaMovimiento,
+                electricistaDocumento || null,
+                codigo_pqr || null
+            ];
+
+            const movimientoResult = await client.query(query, movimientoValues);
+            return movimientoResult.rows[0];
+        };
+
+        let responsePayload;
+
+        if (["DESPACHADO", "PRESTADO"].includes(tipo_movimiento) && cantidadSolicitada > stockDisponible) {
+            const cantidadDesdeInventario = Math.max(0, Math.min(cantidadSolicitada, stockDisponible));
+            const cantidadExcedente = Math.max(0, cantidadSolicitada - cantidadDesdeInventario);
+            const movimientosRegistrados = [];
+
+            if (cantidadDesdeInventario > 0) {
+                const movimientoPrincipal = await registrarMovimiento(tipo_movimiento, cantidadDesdeInventario);
+                movimientosRegistrados.push(movimientoPrincipal);
+            }
+
+            if (cantidadExcedente > 0) {
+                const observacionExcedente = [
+                    observacion || "",
+                    `Ajuste automático por stock insuficiente (${cantidadExcedente})`
+                ].filter(Boolean).join(" | ");
+                const movimientoExcedente = await registrarMovimiento("MATERIAL_EXCEDENTE", cantidadExcedente, null, observacionExcedente || null);
+                movimientosRegistrados.push(movimientoExcedente);
+            }
+
+            responsePayload = {
+                message: "Movimiento registrado con ajuste automático a material excedente",
+                codigo_producto: prodCode,
+                tipo_movimiento_solicitado: tipo_movimiento,
+                cantidad_solicitada: cantidadSolicitada,
+                stock_disponible: stockDisponible,
+                cantidad_desde_inventario: cantidadDesdeInventario,
+                cantidad_material_excedente: cantidadExcedente,
+                movimientos_generados: movimientosRegistrados
+            };
+        } else {
+            const result = await client.query(query, values);
+            responsePayload = result.rows[0];
+        }
 
         await client.query('COMMIT');
         
-        res.status(201).json(result.rows[0]);
+        res.status(201).json(responsePayload);
     } catch (error) {
         await client.query('ROLLBACK');
         console.error("Error creando movimiento:", error);

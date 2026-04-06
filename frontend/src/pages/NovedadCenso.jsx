@@ -48,6 +48,7 @@ export default function NovedadCenso() {
     const [submitNovedadLoading, setSubmitNovedadLoading] = useState(false);
     const [submitGastoLoading, setSubmitGastoLoading] = useState(false);
     const [filasGasto, setFilasGasto] = useState([createGastoRow()]);
+    const [permitirGastoVacio, setPermitirGastoVacio] = useState(false);
     const [itemError, setItemError] = useState("");
     const [lamparaInfo, setLamparaInfo] = useState(null);
     const [lamparaInfoLoading, setLamparaInfoLoading] = useState(false);
@@ -217,6 +218,14 @@ export default function NovedadCenso() {
         return mapa;
     }, [inventario]);
 
+    const hayDatosEnFilas = useMemo(() => {
+        return filasGasto.some((row) => (
+            String(row.codigo || "").trim() !== ""
+            || String(row.cantidad || "").trim() !== ""
+            || (String(row.material || "").trim() !== "" && String(row.material || "").trim() !== "#N/D")
+        ));
+    }, [filasGasto]);
+
     const handleSubmitNovedad = async (event) => {
         event.preventDefault();
         if (!validateAllNovedad()) {
@@ -261,6 +270,7 @@ export default function NovedadCenso() {
             const nuevaNovedad = await createNovedad(payload);
             setNovedadActual(nuevaNovedad);
             setFilasGasto([createGastoRow()]);
+            setPermitirGastoVacio(false);
             setItemError("");
             success("Novedad registrada correctamente");
         } catch (err) {
@@ -318,7 +328,16 @@ export default function NovedadCenso() {
             return;
         }
 
-        if (!validateAllGasto()) {
+        const sinGastos = permitirGastoVacio && !hayDatosEnFilas;
+
+        if (!sinGastos && !validateAllGasto()) {
+            return;
+        }
+
+        if (sinGastos) {
+            setItemError("");
+            setPermitirGastoVacio(false);
+            success("Registro guardado sin gastos para esta novedad");
             return;
         }
 
@@ -336,7 +355,6 @@ export default function NovedadCenso() {
             return;
         }
 
-        const tiposSalida = new Set(["DESPACHADO", "PRESTADO", "MATERIAL_EXCEDENTE"]);
         const codigosRegistrados = new Set();
         const items = [];
 
@@ -377,18 +395,6 @@ export default function NovedadCenso() {
                 return;
             }
 
-            if (tiposSalida.has(formGasto.tipo_movimiento)) {
-                const stockDisponible = Number(elemento.stock_disponible || 0);
-                if (stockDisponible <= 0) {
-                    setItemError(`Fila ${fila}: este elemento está agotado.`);
-                    return;
-                }
-                if (cantidadNum > stockDisponible) {
-                    setItemError(`Fila ${fila}: stock insuficiente. Disponible: ${stockDisponible}, solicitado: ${cantidadNum}`);
-                    return;
-                }
-            }
-
             codigosRegistrados.add(codigo);
             items.push({
                 codigo_producto: codigo,
@@ -426,6 +432,7 @@ export default function NovedadCenso() {
                 : "Gasto registrado correctamente";
             success(mensaje);
             setFilasGasto([createGastoRow()]);
+            setPermitirGastoVacio(false);
             setItemError("");
             resetFormGasto();
             setFormGasto((prev) => ({
@@ -750,7 +757,7 @@ export default function NovedadCenso() {
                                             value={formGasto.id_electricista}
                                             onChange={handleChangeGasto}
                                             onBlur={handleBlurGasto}
-                                            required
+                                            required={!permitirGastoVacio || hayDatosEnFilas}
                                             style={inputStyle}
                                         >
                                             <option value="">Seleccione electricista</option>
@@ -765,7 +772,7 @@ export default function NovedadCenso() {
                                                 </option>
                                             ))}
                                         </select>
-                                        {touchedGasto.id_electricista && errorsGasto.id_electricista && (
+                                        {(!permitirGastoVacio || hayDatosEnFilas) && touchedGasto.id_electricista && errorsGasto.id_electricista && (
                                             <div style={errorTextStyle}>{errorsGasto.id_electricista}</div>
                                         )}
                                         {formGasto.id_electricista && (() => {
@@ -794,11 +801,11 @@ export default function NovedadCenso() {
                                         value={formGasto.codigo_pqr}
                                         onChange={handleChangeGasto}
                                         onBlur={handleBlurGasto}
-                                        required
+                                        required={!permitirGastoVacio || hayDatosEnFilas}
                                         style={inputStyle}
                                         placeholder="Ej: PQR-12345"
                                     />
-                                    {touchedGasto.codigo_pqr && errorsGasto.codigo_pqr && (
+                                    {(!permitirGastoVacio || hayDatosEnFilas) && touchedGasto.codigo_pqr && errorsGasto.codigo_pqr && (
                                         <div style={errorTextStyle}>{errorsGasto.codigo_pqr}</div>
                                     )}
                                 </div>
@@ -817,24 +824,48 @@ export default function NovedadCenso() {
                                 <div>
                                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", marginBottom: "8px", flexWrap: "wrap" }}>
                                         <label style={{ ...labelStyle, marginBottom: 0 }}>Elementos de inventario *</label>
-                                        <button
-                                            type="button"
-                                            onClick={agregarFilaGasto}
-                                            disabled={submitGastoLoading}
-                                            style={{
-                                                padding: "8px 12px",
-                                                background: "#1e78bd",
-                                                color: "white",
-                                                border: "none",
-                                                borderRadius: "8px",
-                                                cursor: submitGastoLoading ? "not-allowed" : "pointer",
-                                                fontWeight: 600,
-                                                fontSize: "12px",
-                                                opacity: submitGastoLoading ? 0.6 : 1
-                                            }}
-                                        >
-                                            Agregar fila
-                                        </button>
+                                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setPermitirGastoVacio((prev) => !prev);
+                                                    setItemError("");
+                                                }}
+                                                disabled={submitGastoLoading}
+                                                title="Desactiva la validación de gastos vacíos para este registro"
+                                                style={{
+                                                    borderRadius: "8px",
+                                                    border: "1px solid #1e78bd",
+                                                    background: permitirGastoVacio ? "#1e78bd" : "white",
+                                                    color: permitirGastoVacio ? "white" : "#1e78bd",
+                                                    padding: "8px 10px",
+                                                    cursor: submitGastoLoading ? "not-allowed" : "pointer",
+                                                    opacity: submitGastoLoading ? 0.6 : 1,
+                                                    fontWeight: 600,
+                                                    fontSize: "11px"
+                                                }}
+                                            >
+                                                {permitirGastoVacio ? "Sin gasto: activo" : "Sin gasto"}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={agregarFilaGasto}
+                                                disabled={submitGastoLoading}
+                                                style={{
+                                                    padding: "8px 12px",
+                                                    background: "#1e78bd",
+                                                    color: "white",
+                                                    border: "none",
+                                                    borderRadius: "8px",
+                                                    cursor: submitGastoLoading ? "not-allowed" : "pointer",
+                                                    fontWeight: 600,
+                                                    fontSize: "12px",
+                                                    opacity: submitGastoLoading ? 0.6 : 1
+                                                }}
+                                            >
+                                                Agregar fila
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div style={{ overflowX: "auto", border: "1px solid #dbe5ef", borderRadius: "10px" }}>
@@ -910,6 +941,11 @@ export default function NovedadCenso() {
                                     <div style={{ marginTop: "6px", fontSize: "12px", color: "#64748b" }}>
                                         Escribe el código del material y la cantidad a registrar. Se valida el stock automáticamente según el tipo de movimiento.
                                     </div>
+                                    {permitirGastoVacio && !hayDatosEnFilas && (
+                                        <div style={{ marginTop: "6px", fontSize: "12px", color: "#0f7c90" }}>
+                                            Validación de gastos vacíos desactivada para este registro.
+                                        </div>
+                                    )}
                                 </div>
 
                                 {itemError && <div style={errorTextStyle}>{itemError}</div>}

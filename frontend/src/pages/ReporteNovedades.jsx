@@ -52,6 +52,7 @@ export default function ReporteNovedades() {
         observacion: ""
     });
     const [filasGasto, setFilasGasto] = useState([createGastoRow()]);
+    const [permitirGastoVacio, setPermitirGastoVacio] = useState(false);
     const [ordenNovedades, setOrdenNovedades] = useState("asc");
     const [ordenCodigoMovimientos, setOrdenCodigoMovimientos] = useState("asc");
     const [mostrarOtp, setMostrarOtp] = useState(false);
@@ -177,6 +178,14 @@ export default function ReporteNovedades() {
         return mapa;
     }, [inventario]);
 
+    const hayDatosEnFilas = useMemo(() => {
+        return filasGasto.some((row) => {
+            const codigo = String(row.codigo || "").trim();
+            const cantidad = String(row.cantidad || "").trim();
+            return Boolean(codigo || cantidad);
+        });
+    }, [filasGasto]);
+
     const movimientosEdicion = useMemo(() => {
         if (!novedadMovimientos) {
             return [];
@@ -205,6 +214,7 @@ export default function ReporteNovedades() {
             observacion: ""
         });
         setFilasGasto([createGastoRow()]);
+        setPermitirGastoVacio(false);
     };
 
     const cerrarEditorMovimientos = () => {
@@ -358,6 +368,10 @@ export default function ReporteNovedades() {
     };
 
     const validarMovimiento = () => {
+        if (permitirGastoVacio && !hayDatosEnFilas) {
+            return { error: "", items: [], sinGastos: true };
+        }
+
         if (!formMovimiento.id_electricista) {
             return { error: "Selecciona un electricista", items: [] };
         }
@@ -378,7 +392,6 @@ export default function ReporteNovedades() {
             return { error: "El código PQR es obligatorio", items: [] };
         }
 
-        const tiposSalida = new Set(["DESPACHADO", "PRESTADO", "MATERIAL_EXCEDENTE"]);
         const codigosRegistrados = new Set();
         const items = [];
 
@@ -413,16 +426,6 @@ export default function ReporteNovedades() {
                 return { error: `Fila ${fila}: el código ${codigo} está repetido.`, items: [] };
             }
 
-            if (tiposSalida.has(formMovimiento.tipo_movimiento)) {
-                const stockDisponible = Number(elemento.stock_disponible || 0);
-                if (stockDisponible <= 0) {
-                    return { error: `Fila ${fila}: este elemento está agotado.`, items: [] };
-                }
-                if (cantidadNum > stockDisponible) {
-                    return { error: `Fila ${fila}: stock insuficiente. Disponible: ${stockDisponible}, solicitado: ${cantidadNum}`, items: [] };
-                }
-            }
-
             codigosRegistrados.add(codigo);
             items.push({
                 codigo_producto: codigo,
@@ -447,6 +450,7 @@ export default function ReporteNovedades() {
             observacion: ""
         });
         setFilasGasto([createGastoRow()]);
+        setPermitirGastoVacio(false);
     };
 
     const handleSubmitMovimiento = async (event) => {
@@ -456,13 +460,22 @@ export default function ReporteNovedades() {
             return;
         }
 
-        const { error: validacionError, items } = validarMovimiento();
+        const { error: validacionError, items, sinGastos } = validarMovimiento();
         if (validacionError) {
             setItemError(validacionError);
             return;
         }
 
         setItemError("");
+
+        if (sinGastos) {
+            setPendingOtpAction({
+                tipo: "movimiento_sin_gasto",
+                payload: { id_novedad: Number(novedadMovimientos.id_novedad) }
+            });
+            setMostrarOtp(true);
+            return;
+        }
 
         const payload = {
             tipo_movimiento: formMovimiento.tipo_movimiento,
@@ -542,6 +555,13 @@ export default function ReporteNovedades() {
 
         if (accion.tipo === "eliminar_movimiento") {
             await ejecutarEliminacionMovimiento(accion.payload);
+            return;
+        }
+
+        if (accion.tipo === "movimiento_sin_gasto") {
+            success("Registro guardado sin gastos para esta novedad");
+            limpiarFormularioMovimiento();
+            setNovedadMovimientos(null);
             return;
         }
 
@@ -970,7 +990,7 @@ export default function ReporteNovedades() {
                                             onChange={handleChangeMovimiento}
                                             style={inputStyle}
                                             disabled={submitMovimientoLoading}
-                                            required
+                                            required={!permitirGastoVacio || hayDatosEnFilas}
                                         >
                                             <option value="">Seleccione electricista</option>
                                             {electricistas.map((e) => (
@@ -1012,7 +1032,7 @@ export default function ReporteNovedades() {
                                         style={inputStyle}
                                         disabled={submitMovimientoLoading}
                                         placeholder="Ej: PQR-12345"
-                                        required
+                                        required={!permitirGastoVacio || hayDatosEnFilas}
                                     />
                                 </div>
 
@@ -1030,24 +1050,48 @@ export default function ReporteNovedades() {
                                 <div>
                                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", marginBottom: "8px", flexWrap: "wrap" }}>
                                         <label style={{ ...labelStyle, marginBottom: 0 }}>Elementos de inventario *</label>
-                                        <button
-                                            type="button"
-                                            onClick={agregarFilaGasto}
-                                            disabled={submitMovimientoLoading}
-                                            style={{
-                                                padding: "8px 12px",
-                                                background: "#1e78bd",
-                                                color: "white",
-                                                border: "none",
-                                                borderRadius: "8px",
-                                                cursor: submitMovimientoLoading ? "not-allowed" : "pointer",
-                                                fontWeight: 600,
-                                                fontSize: "12px",
-                                                opacity: submitMovimientoLoading ? 0.6 : 1
-                                            }}
-                                        >
-                                            Agregar fila
-                                        </button>
+                                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setPermitirGastoVacio((prev) => !prev);
+                                                    setItemError("");
+                                                }}
+                                                disabled={submitMovimientoLoading}
+                                                title="Desactiva la validación de gastos vacíos para este registro"
+                                                style={{
+                                                    borderRadius: "8px",
+                                                    border: "1px solid #1e78bd",
+                                                    background: permitirGastoVacio ? "#1e78bd" : "white",
+                                                    color: permitirGastoVacio ? "white" : "#1e78bd",
+                                                    padding: "8px 10px",
+                                                    cursor: submitMovimientoLoading ? "not-allowed" : "pointer",
+                                                    opacity: submitMovimientoLoading ? 0.6 : 1,
+                                                    fontWeight: 600,
+                                                    fontSize: "11px"
+                                                }}
+                                            >
+                                                {permitirGastoVacio ? "Sin gasto: activo" : "Sin gasto"}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={agregarFilaGasto}
+                                                disabled={submitMovimientoLoading}
+                                                style={{
+                                                    padding: "8px 12px",
+                                                    background: "#1e78bd",
+                                                    color: "white",
+                                                    border: "none",
+                                                    borderRadius: "8px",
+                                                    cursor: submitMovimientoLoading ? "not-allowed" : "pointer",
+                                                    fontWeight: 600,
+                                                    fontSize: "12px",
+                                                    opacity: submitMovimientoLoading ? 0.6 : 1
+                                                }}
+                                            >
+                                                Agregar fila
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div style={{ overflowX: "auto", border: "1px solid #dbe5ef", borderRadius: "10px" }}>
@@ -1123,6 +1167,11 @@ export default function ReporteNovedades() {
                                     <div style={{ marginTop: "6px", fontSize: "12px", color: "#64748b" }}>
                                         Escribe el código del material y la cantidad a registrar. Se valida el stock automáticamente según el tipo de movimiento.
                                     </div>
+                                    {permitirGastoVacio && !hayDatosEnFilas && (
+                                        <div style={{ marginTop: "6px", fontSize: "12px", color: "#0f7c90" }}>
+                                            Validación de gastos vacíos desactivada para este registro.
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 

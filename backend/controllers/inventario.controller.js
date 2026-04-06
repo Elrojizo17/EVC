@@ -101,10 +101,13 @@ exports.getInventarioFlat = async (req, res) => {
                     - COALESCE(rm.devolucion_pqr, 0),
                     0
                 ) AS gastado_pqr,
-                COALESCE(rm.material_excedente, 0) AS material_excedente,
+                (
+                    COALESCE(rm.material_excedente, 0)
+                    + COALESCE(rm.material_excedente_pqr, 0)
+                ) AS material_excedente,
                 p.precio_unitario AS costo_unitario,
                 p.fecha_compra,
-                -- Stock disponible: Inicial + Recibe + Devoluciones - Salidas (incluye movimientos PQR)
+                -- Stock disponible: Inicial + Recibe + Devoluciones - Salidas reales de inventario
                 GREATEST(
                     (
                         CASE
@@ -119,9 +122,7 @@ exports.getInventarioFlat = async (req, res) => {
                     - COALESCE(rm.despachado, 0)
                     - COALESCE(rm.despachado_pqr, 0)
                     - COALESCE(rm.prestamo, 0)
-                    - COALESCE(rm.prestamo_pqr, 0)
-                    - COALESCE(rm.material_excedente, 0)
-                    - COALESCE(rm.material_excedente_pqr, 0),
+                    - COALESCE(rm.prestamo_pqr, 0),
                     0
                 ) AS stock_disponible,
                 GREATEST(

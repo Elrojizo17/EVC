@@ -222,27 +222,6 @@ export default function DevolucionesPrestamos() {
               - PQR Original: ${despachoSeleccionado.codigo_pqr}`);
         }
 
-        const elementoSeleccionado = inventario.find(
-            (i) => i.id_inventario === parseInt(formMovimiento.id_inventario)
-        );
-
-        const tiposSalida = ["PRESTADO"];
-
-        if (elementoSeleccionado && tiposSalida.includes(formMovimiento.tipo_movimiento)) {
-            const stockDisponible = Number(elementoSeleccionado.stock_disponible || 0);
-            const cantidadSolicitada = parseInt(formMovimiento.cantidad);
-
-            if (cantidadSolicitada > stockDisponible) {
-                errorNotification(`Stock insuficiente. Disponible: ${stockDisponible}, Solicitado: ${cantidadSolicitada}`);
-                return;
-            }
-
-            if (stockDisponible <= 0) {
-                errorNotification("Este elemento está agotado. No puedes registrar más salidas.");
-                return;
-            }
-        }
-
         try {
             setSubmitLoading(true);
 
@@ -563,14 +542,11 @@ export default function DevolucionesPrestamos() {
                                     .map((i) => {
                                         const stockDisponible = Number(i.stock_disponible || 0);
                                         const stockTexto = stockDisponible > 0 ? ` (Disponible: ${stockDisponible})` : " (AGOTADO)";
-                                        const tiposSalida = ["DESPACHADO", "PRESTADO", "MATERIAL_EXCEDENTE"];
-                                        const disabled = tiposSalida.includes(formMovimiento.tipo_movimiento) && stockDisponible <= 0;
 
                                         return (
                                             <option
                                                 key={i.id_inventario}
                                                 value={i.id_inventario}
-                                                disabled={disabled}
                                             >
                                                 {i.codigo_elemento} - {i.elemento}{stockTexto}
                                             </option>

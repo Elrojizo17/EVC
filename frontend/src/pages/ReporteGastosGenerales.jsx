@@ -95,6 +95,22 @@ export default function ReporteGastosGenerales() {
                 Consulta todos los movimientos de bodega con su costo neto. Las devoluciones se restan del total.
             </p>
 
+            <div style={{ marginBottom: "14px", padding: "12px", background: "#f0f9ff", borderRadius: "8px", borderLeft: "4px solid #0f7c90" }}>
+                <div style={{ fontSize: "12px", color: "#475569" }}>Total neto de gastos</div>
+                <div
+                    style={{
+                        fontSize: "20px",
+                        fontWeight: "bold",
+                        color: totalNeto < 0 ? "#b91c1c" : "#0f7c90"
+                    }}
+                >
+                    {loading ? "Calculando..." : `$${formatCurrency(totalNeto)}`}
+                </div>
+                <div style={{ fontSize: "11px", color: "#64748b", marginTop: "4px" }}>
+                    Se actualiza automáticamente con los filtros aplicados.
+                </div>
+            </div>
+
             {error && (
                 <div style={{ marginBottom: "16px", padding: "12px", background: "#fee2e2", color: "#991b1b", borderRadius: "8px" }}>
                     {error}
@@ -209,10 +225,6 @@ export default function ReporteGastosGenerales() {
                     </div>
                 )}
 
-                <div style={{ marginTop: "14px", padding: "12px", background: "#f0f9ff", borderRadius: "8px", borderLeft: "4px solid #0f7c90" }}>
-                    <div style={{ fontSize: "12px", color: "#475569" }}>Total neto</div>
-                    <div style={{ fontSize: "20px", fontWeight: "bold", color: "#0f7c90" }}>${formatCurrency(totalNeto)}</div>
-                </div>
             </section>
         </div>
     );
