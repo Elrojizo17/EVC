@@ -51,6 +51,12 @@ async function ensureDatabaseCompatibility() {
     `);
 
     await pool.query(`
+        ALTER TABLE IF EXISTS novedad_luminaria
+            ADD COLUMN IF NOT EXISTS id_electricista VARCHAR(50),
+            ADD COLUMN IF NOT EXISTS codigo_pqr TEXT;
+    `);
+
+    await pool.query(`
         ALTER TABLE IF EXISTS lote_producto
             ADD COLUMN IF NOT EXISTS numero_orden VARCHAR(80);
     `);

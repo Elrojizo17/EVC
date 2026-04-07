@@ -81,7 +81,12 @@ export default function OtpModal({ isOpen, onClose, onVerificado }) {
             setMensaje("OTP validado correctamente.");
             setCodigo("");
             setSecondsLeft(0);
-            onVerificado?.();
+            await Promise.resolve(onVerificado?.());
+            window.dispatchEvent(
+                new CustomEvent("otp-accion-confirmada", {
+                    detail: { at: Date.now() }
+                })
+            );
         } catch (err) {
             setError(err.message || "No se pudo verificar el OTP");
         } finally {

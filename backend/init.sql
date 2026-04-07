@@ -52,13 +52,19 @@ CREATE TABLE novedad_luminaria (
     fecha_novedad         TIMESTAMP NOT NULL DEFAULT now(),
     fecha_registro        TIMESTAMP NOT NULL DEFAULT now(),
     observacion           TEXT,
+    codigo_pqr            VARCHAR(50),
+    id_electricista       VARCHAR(50),
     created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at            TIMESTAMPTZ,
 
     FOREIGN KEY (numero_lampara)
         REFERENCES luminaria(numero_lampara)
         ON UPDATE CASCADE
-        ON DELETE RESTRICT
+        ON DELETE RESTRICT,
+    FOREIGN KEY (id_electricista)
+        REFERENCES electricista(documento)
+        ON UPDATE CASCADE
+        ON DELETE SET NULL
 );
 
 -- Inventario de productos (estructura simplificada)

@@ -16,13 +16,13 @@ const validationsNovedad = {
     tecnologia_nueva: [],
     potencia_nueva_w: [],
     fecha_novedad: [validationRules.required],
+    id_electricista: [validationRules.required],
+    codigo_pqr: [validationRules.required, validationRules.minLength(3)],
     observacion: []
 };
 
 const validationsGasto = {
     tipo_movimiento: [validationRules.required],
-    id_electricista: [validationRules.required],
-    codigo_pqr: [validationRules.required, validationRules.minLength(3)],
     observacion: []
 };
 
@@ -72,6 +72,8 @@ export default function NovedadCenso() {
             potencia_nueva_w: "",
             id_elemento_reemplazo: "",
             fecha_novedad: new Date().toISOString().split("T")[0],
+            id_electricista: "",
+            codigo_pqr: "",
             observacion: ""
         },
         validationsNovedad
@@ -84,13 +86,10 @@ export default function NovedadCenso() {
         handleChange: handleChangeGasto,
         handleBlur: handleBlurGasto,
         validateAll: validateAllGasto,
-        resetForm: resetFormGasto,
-        setValues: setFormGasto
+        resetForm: resetFormGasto
     } = useFormValidation(
         {
             tipo_movimiento: "DESPACHADO",
-            id_electricista: "",
-            codigo_pqr: "",
             observacion: ""
         },
         validationsGasto
@@ -198,6 +197,11 @@ export default function NovedadCenso() {
         }
     };
 
+
+    const electricistaNovedadSeleccionado = useMemo(
+        () => electricistas.find((e) => String(e.id_electricista) === String(formNovedad.id_electricista)) || null,
+        [electricistas, formNovedad.id_electricista]
+    );
     const normalizarTecnologia = (valor) => {
         if (valor === null || valor === undefined) {
             return null;
@@ -263,6 +267,8 @@ export default function NovedadCenso() {
                     const potencia = Number(formNovedad.potencia_nueva_w);
                     return Number.isFinite(potencia) && potencia > 0 ? Math.floor(potencia) : null;
                 })(),
+                id_electricista: String(formNovedad.id_electricista || "").trim() || null,
+                codigo_pqr: String(formNovedad.codigo_pqr || "").trim() || null,
                 observacion: formNovedad.observacion || null,
                 accion: null
             };
@@ -342,16 +348,22 @@ export default function NovedadCenso() {
         }
 
         const electricistaSeleccionado = electricistas.find(
-            (e) => String(e.id_electricista) === String(formGasto.id_electricista)
+            (e) => String(e.id_electricista) === String(formNovedad.id_electricista)
         );
 
         if (!electricistaSeleccionado) {
-            errorNotification("Selecciona un electricista válido");
+            errorNotification("La novedad no tiene un electricista válido para asociar los gastos.");
             return;
         }
 
         if (!electricistaSeleccionado.activo) {
             errorNotification("El electricista seleccionado no está disponible");
+            return;
+        }
+
+        const codigoPqrNovedad = String(novedadActual.codigo_pqr || formNovedad.codigo_pqr || "").trim();
+        if (!codigoPqrNovedad) {
+            errorNotification("La novedad no tiene código PQR. Registra nuevamente la novedad para continuar.");
             return;
         }
 
@@ -419,9 +431,9 @@ export default function NovedadCenso() {
                     tipo_movimiento: formGasto.tipo_movimiento,
                     cantidad: item.cantidad_usada,
                     id_novedad_luminaria: novedadActual.id_novedad,
-                    id_electricista: Number(formGasto.id_electricista),
-                    codigo_pqr: formGasto.codigo_pqr,
-                    observacion: formGasto.observacion || null,
+                    id_electricista: Number(electricistaSeleccionado.id_electricista),
+                    codigo_pqr: codigoPqrNovedad,
+                    observacion: formGasto.observacion || formNovedad.observacion || null,
                     ...(fechaMovimiento ? { fecha: fechaMovimiento } : {})
                 };
                 await createGasto(payload);
@@ -435,10 +447,6 @@ export default function NovedadCenso() {
             setPermitirGastoVacio(false);
             setItemError("");
             resetFormGasto();
-            setFormGasto((prev) => ({
-                ...prev,
-                tipo_movimiento: "DESPACHADO"
-            }));
             cargarDatos();
         } catch (err) {
             errorNotification(err.message || "Error registrando el gasto");
@@ -659,6 +667,68 @@ export default function NovedadCenso() {
                             )}
                         </div>
 
+                        <div>
+                            <label style={labelStyle}>Electricista responsable *</label>
+                            <select
+                                name="id_electricista"
+                                value={formNovedad.id_electricista}
+                                onChange={handleChangeNovedad}
+                                onBlur={handleBlurNovedad}
+                                required
+                                style={inputStyle}
+                            >
+                                <option value="">Seleccione electricista</option>
+                                {electricistas.map((e) => (
+                                    <option
+                                        key={e.id_electricista}
+                                        value={e.id_electricista}
+                                        style={{ color: e.activo ? "#0f172a" : "#9ca3af" }}
+                                    >
+                                        {e.nombre} (Doc: {e.documento})
+                                        {!e.activo ? " • No disponible" : ""}
+                                    </option>
+                                ))}
+                            </select>
+                            {touchedNovedad.id_electricista && errorsNovedad.id_electricista && (
+                                <div style={errorTextStyle}>{errorsNovedad.id_electricista}</div>
+                            )}
+                        </div>
+
+                        <div>
+                            <label style={labelStyle}>Código PQR *</label>
+                            <input
+                                type="text"
+                                name="codigo_pqr"
+                                value={formNovedad.codigo_pqr}
+                                onChange={handleChangeNovedad}
+                                onBlur={handleBlurNovedad}
+                                required
+                                style={inputStyle}
+                                placeholder="Ej: PQR-12345"
+                            />
+                            {touchedNovedad.codigo_pqr && errorsNovedad.codigo_pqr && (
+                                <div style={errorTextStyle}>{errorsNovedad.codigo_pqr}</div>
+                            )}
+                            <div style={{ marginTop: "4px", fontSize: "11px", color: "#64748b" }}>
+                                Ingresa el código PQR según necesidad operativa.
+                            </div>
+                        </div>
+
+                        <div style={{ gridColumn: "1 / -1" }}>
+                            <label style={labelStyle}>Observación de la novedad</label>
+                            <textarea
+                                name="observacion"
+                                value={formNovedad.observacion}
+                                onChange={handleChangeNovedad}
+                                onBlur={handleBlurNovedad}
+                                style={{ ...inputStyle, minHeight: "80px", resize: "vertical" }}
+                                placeholder="Describe la novedad..."
+                            />
+                            <div style={{ marginTop: "4px", fontSize: "11px", color: "#64748b" }}>
+                                Esta observación se mostrará en el campo superior de observaciones del reporte.
+                            </div>
+                        </div>
+
                     </div>
 
                     <button
@@ -725,6 +795,12 @@ export default function NovedadCenso() {
                                         </span>
                                     )}
                                 </div>
+                                <div style={{ marginTop: "6px" }}>
+                                    Electricista: <strong>{electricistaNovedadSeleccionado ? `${electricistaNovedadSeleccionado.nombre} (${electricistaNovedadSeleccionado.documento})` : "-"}</strong>
+                                </div>
+                                <div style={{ marginTop: "6px" }}>
+                                    Código PQR: <strong>{String(novedadActual.codigo_pqr || formNovedad.codigo_pqr || "").trim() || "-"}</strong>
+                                </div>
                             </div>
 
                             <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
@@ -751,63 +827,32 @@ export default function NovedadCenso() {
                                     </div>
 
                                     <div>
-                                        <label style={labelStyle}>Electricista responsable *</label>
-                                        <select
-                                            name="id_electricista"
-                                            value={formGasto.id_electricista}
-                                            onChange={handleChangeGasto}
-                                            onBlur={handleBlurGasto}
-                                            required={!permitirGastoVacio || hayDatosEnFilas}
-                                            style={inputStyle}
-                                        >
-                                            <option value="">Seleccione electricista</option>
-                                            {electricistas.map((e) => (
-                                                <option
-                                                    key={e.id_electricista}
-                                                    value={e.id_electricista}
-                                                    style={{ color: e.activo ? "#0f172a" : "#9ca3af" }}
-                                                >
-                                                    {e.nombre} (Doc: {e.documento})
-                                                    {!e.activo ? " • No disponible" : ""}
-                                                </option>
-                                            ))}
-                                        </select>
-                                        {(!permitirGastoVacio || hayDatosEnFilas) && touchedGasto.id_electricista && errorsGasto.id_electricista && (
-                                            <div style={errorTextStyle}>{errorsGasto.id_electricista}</div>
+                                        <label style={labelStyle}>Electricista (heredado de la novedad)</label>
+                                        <input
+                                            type="text"
+                                            value={electricistaNovedadSeleccionado ? `${electricistaNovedadSeleccionado.nombre} (${electricistaNovedadSeleccionado.documento})` : "Sin electricista"}
+                                            readOnly
+                                            style={{ ...inputStyle, background: "#f8fafc", color: "#334155" }}
+                                        />
+                                        {electricistaNovedadSeleccionado && !electricistaNovedadSeleccionado.activo && (
+                                            <div style={{ ...errorTextStyle, color: "#9ca3af" }}>
+                                                Este electricista está marcado como no disponible.
+                                            </div>
                                         )}
-                                        {formGasto.id_electricista && (() => {
-                                            const seleccionado = electricistas.find(
-                                                (e) => String(e.id_electricista) === String(formGasto.id_electricista)
-                                            );
-
-                                            if (!seleccionado || seleccionado.activo) {
-                                                return null;
-                                            }
-
-                                            return (
-                                                <div style={{ ...errorTextStyle, color: "#9ca3af" }}>
-                                                    Este electricista aparece en gris porque está marcado como no disponible.
-                                                </div>
-                                            );
-                                        })()}
                                     </div>
                                 </div>
 
                                 <div>
-                                    <label style={labelStyle}>Código PQR *</label>
+                                    <label style={labelStyle}>Código PQR (heredado de la novedad)</label>
                                     <input
                                         type="text"
-                                        name="codigo_pqr"
-                                        value={formGasto.codigo_pqr}
-                                        onChange={handleChangeGasto}
-                                        onBlur={handleBlurGasto}
-                                        required={!permitirGastoVacio || hayDatosEnFilas}
-                                        style={inputStyle}
-                                        placeholder="Ej: PQR-12345"
+                                        value={String(novedadActual.codigo_pqr || formNovedad.codigo_pqr || "").trim()}
+                                        readOnly
+                                        style={{ ...inputStyle, background: "#f8fafc", color: "#334155", fontWeight: 600 }}
                                     />
-                                    {(!permitirGastoVacio || hayDatosEnFilas) && touchedGasto.codigo_pqr && errorsGasto.codigo_pqr && (
-                                        <div style={errorTextStyle}>{errorsGasto.codigo_pqr}</div>
-                                    )}
+                                    <div style={{ marginTop: "4px", fontSize: "11px", color: "#64748b" }}>
+                                        Este valor está bloqueado y se toma automáticamente desde la novedad.
+                                    </div>
                                 </div>
 
                                 <div>

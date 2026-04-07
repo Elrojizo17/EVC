@@ -63,6 +63,17 @@ const extraerNumeroOrden = (value) => {
     return Number.parseInt(contenido, 10);
 };
 
+// Ordenes que se reservan y no deben exigirse en la secuencia de ingreso.
+const ORDENES_OMITIDAS = new Set([6]);
+
+const calcularSiguienteOrdenObligatoria = (ultimoNumero) => {
+    let candidato = (ultimoNumero ?? -1) + 1;
+    while (ORDENES_OMITIDAS.has(candidato)) {
+        candidato += 1;
+    }
+    return candidato;
+};
+
 const normalizarFechaInput = (value) => {
     const fecha = String(value || "").trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
@@ -234,6 +245,11 @@ export default function InventarioBodega() {
         return ultimo;
     }, [ordenesExistentes]);
 
+    const siguienteNumeroOrdenObligatoria = useMemo(
+        () => calcularSiguienteOrdenObligatoria(ultimoNumeroOrdenGuardado),
+        [ultimoNumeroOrdenGuardado]
+    );
+
     useEffect(() => {
         cargarInventario();
         cargarConfigUi();
@@ -302,7 +318,7 @@ export default function InventarioBodega() {
 
     const abrirIngresoModal = () => {
         const hoy = getToday();
-        const siguienteOrden = normalizarOrden(String((ultimoNumeroOrdenGuardado ?? -1) + 1));
+        const siguienteOrden = normalizarOrden(String(siguienteNumeroOrdenObligatoria));
         setFechaIngresoGlobal(hoy);
         setFilasIngreso([{ ...createIngresoRow(), numero_orden: siguienteOrden }]);
         setMostrarIngresoModal(true);
@@ -490,8 +506,7 @@ export default function InventarioBodega() {
             return;
         }
 
-        // Primera orden debe ser 0 (Orden: 000), luego consecutivas
-        const esperado = (ultimoNumeroOrdenGuardado ?? -1) + 1;
+        const esperado = siguienteNumeroOrdenObligatoria;
         if (ordenGlobalNumero !== esperado) {
             errorNotification(`La orden debe ser consecutiva. Debe ser ORDEN: ${String(esperado).padStart(3, "0")}`);
             return;
@@ -1017,7 +1032,7 @@ export default function InventarioBodega() {
                         </p>
 
                         <p style={{ color: "#475569", fontSize: "12px", marginTop: "-4px", marginBottom: "10px" }}>
-                            Última orden guardada: {ultimoNumeroOrdenGuardado === null ? "Ninguna" : `ORDEN: ${String(ultimoNumeroOrdenGuardado).padStart(3, "0")}`}. Siguiente obligatoria: ORDEN: {String((ultimoNumeroOrdenGuardado ?? -1) + 1).padStart(3, "0")}.
+                            Última orden guardada: {ultimoNumeroOrdenGuardado === null ? "Ninguna" : `ORDEN: ${String(ultimoNumeroOrdenGuardado).padStart(3, "0")}`}. Siguiente obligatoria: ORDEN: {String(siguienteNumeroOrdenObligatoria).padStart(3, "0")}.
                         </p>
 
                         <div style={{

@@ -1,7 +1,7 @@
 const API_URL = "http://localhost:3000/api/gastos";
 
 export const getGastos = async () => {
-    const res = await fetch(API_URL);
+    const res = await fetch(`${API_URL}?_=${Date.now()}`, { cache: "no-store" });
     const data = await res.json();
     if (!res.ok || data.error) {
         throw new Error(data.error || 'Error consultando gastos');

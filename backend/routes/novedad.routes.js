@@ -6,7 +6,38 @@ const pool = require("../db");
 router.get("/", async (req, res) => {
     try {
         const result = await pool.query(`
-            SELECT * FROM novedad_luminaria 
+            SELECT
+                n.id_novedad,
+                n.numero_lampara,
+                n.tipo_novedad,
+                n.tecnologia_anterior,
+                n.tecnologia_nueva,
+                n.accion,
+                n.fecha_novedad,
+                n.fecha_registro,
+                COALESCE(NULLIF(BTRIM(n.observacion), ''), mv.observacion_reciente) AS observacion,
+                COALESCE(NULLIF(BTRIM(n.codigo_pqr), ''), mv.codigo_pqr_reciente) AS codigo_pqr,
+                COALESCE(NULLIF(BTRIM(n.id_electricista), ''), mv.id_electricista_reciente) AS id_electricista,
+                COALESCE(e_nov.nombre, mv.nombre_electricista_reciente) AS nombre_electricista,
+                mv.codigo_pqr_reciente,
+                mv.id_electricista_reciente,
+                mv.nombre_electricista_reciente,
+                n.created_at,
+                n.updated_at
+            FROM novedad_luminaria n
+            LEFT JOIN electricista e_nov ON e_nov.documento = n.id_electricista
+            LEFT JOIN LATERAL (
+                SELECT
+                    NULLIF(BTRIM(mb.observacion), '') AS observacion_reciente,
+                    NULLIF(BTRIM(mb.codigo_pqr), '') AS codigo_pqr_reciente,
+                    mb.id_electricista AS id_electricista_reciente,
+                    e.nombre AS nombre_electricista_reciente
+                FROM movimiento_bodega mb
+                LEFT JOIN electricista e ON e.documento = mb.id_electricista
+                WHERE mb.id_novedad_luminaria = n.id_novedad
+                ORDER BY mb.fecha DESC, mb.id_movimiento DESC
+                LIMIT 1
+            ) mv ON true
             ORDER BY fecha_novedad DESC
         `);
         res.json(result.rows);
@@ -27,12 +58,48 @@ router.post("/", async (req, res) => {
         id_elemento_reemplazo,
         accion,
         fecha_novedad,
-        observacion
+        observacion,
+        codigo_pqr,
+        id_electricista
     } = req.body;
 
     const client = await pool.connect();
     try {
         await client.query("BEGIN");
+
+        const numeroLamparaTexto = String(numero_lampara || "").trim();
+        if (!numeroLamparaTexto) {
+            throw new Error("El número de lámpara es obligatorio");
+        }
+
+        // Validar existencia de la lámpara antes del INSERT evita consumir IDs en fallos de FK.
+        const lamparaExistenteResult = await client.query(
+            `SELECT numero_lampara
+             FROM luminaria
+             WHERE CAST(numero_lampara AS TEXT) = CAST($1 AS TEXT)
+                OR numero_lampara = $1
+             LIMIT 1`,
+            [numeroLamparaTexto]
+        );
+
+        if (lamparaExistenteResult.rows.length === 0) {
+            throw new Error(`La lámpara ${numeroLamparaTexto} no existe en el censo`);
+        }
+
+        const numeroLamparaDb = lamparaExistenteResult.rows[0].numero_lampara;
+        const codigoPqrNormalizado = codigo_pqr ? String(codigo_pqr).trim() : null;
+        const electricistaDocumento = id_electricista ? String(id_electricista).trim() : null;
+
+        if (electricistaDocumento) {
+            const electricistaCheck = await client.query(
+                `SELECT documento FROM electricista WHERE documento = $1`,
+                [electricistaDocumento]
+            );
+
+            if (electricistaCheck.rows.length === 0) {
+                throw new Error("Electricista no encontrado para la novedad");
+            }
+        }
 
         const normalizarTecnologia = (valor) => {
             if (valor === null || valor === undefined) return null;
@@ -40,46 +107,21 @@ router.post("/", async (req, res) => {
             return texto === "" ? null : texto.toLowerCase();
         };
 
-        const query = `
-            INSERT INTO novedad_luminaria (
-                numero_lampara,
-                tipo_novedad,
-                tecnologia_anterior,
-                tecnologia_nueva,
-                accion,
-                fecha_novedad,
-                observacion
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING *
-        `;
-
-        const values = [
-            numero_lampara,
-            tipo_novedad,
-            normalizarTecnologia(tecnologia_anterior),
-            normalizarTecnologia(tecnologia_nueva),
-            accion,
-            fecha_novedad || new Date(),
-            observacion
-        ];
-
-        const result = await client.query(query, values);
-        
         let cambiosRealizados = {
             novedadCreada: true,
             mantenimientoAplicado: false,
             cambioTecnologiaAplicado: false,
-            lampara: numero_lampara
+            lampara: numeroLamparaDb
         };
 
         if (String(tipo_novedad).toUpperCase() === "MANTENIMIENTO") {
-            console.log(`🔧 Aplicando mantenimiento a lámpara ${numero_lampara}`);
+            console.log(`🔧 Aplicando mantenimiento a lámpara ${numeroLamparaDb}`);
             const mantenimientoResult = await client.query(
                 "UPDATE luminaria SET estado = $1 WHERE CAST(numero_lampara AS TEXT) = CAST($2 AS TEXT) OR numero_lampara = $3 RETURNING numero_lampara, estado",
-                ["INACTIVA", numero_lampara, numero_lampara]
+                ["INACTIVA", numeroLamparaDb, numeroLamparaDb]
             );
             if (mantenimientoResult.rows.length > 0) {
-                console.log(`✅ Mantenimiento aplicado a lámpara ${numero_lampara}`);
+                console.log(`✅ Mantenimiento aplicado a lámpara ${numeroLamparaDb}`);
                 cambiosRealizados.mantenimientoAplicado = true;
             }
         }
@@ -90,11 +132,11 @@ router.post("/", async (req, res) => {
                 // Primero, verificar si la lámpara existe
                 const verificarResult = await client.query(
                     "SELECT * FROM luminaria WHERE CAST(numero_lampara AS TEXT) = CAST($1 AS TEXT) OR numero_lampara = $2",
-                    [numero_lampara, numero_lampara]
+                    [numeroLamparaDb, numeroLamparaDb]
                 );
                 
                 if (verificarResult.rows.length === 0) {
-                    console.warn(`⚠️ Lámpara ${numero_lampara} no encontrada en base de datos`);
+                    console.warn(`⚠️ Lámpara ${numeroLamparaDb} no encontrada en base de datos`);
                     cambiosRealizados.cambioTecnologiaAplicado = false;
                 } else {
                     // Obtener potencia del elemento de inventario (lote) si se proporcionó
@@ -130,7 +172,7 @@ router.post("/", async (req, res) => {
                         }
                     }
                     
-                    console.log(`📝 Actualizando lámpara ${numero_lampara} con tecnología: ${tecNormalizada}${potencia_nueva ? ` y potencia: ${potencia_nueva}W` : ''}`);
+                    console.log(`📝 Actualizando lámpara ${numeroLamparaDb} con tecnología: ${tecNormalizada}${potencia_nueva ? ` y potencia: ${potencia_nueva}W` : ''}`);
                     
                     // La lámpara existe, ahora actualizarla con tecnología y opcionalmente potencia
                     let updateQuery, updateParams;
@@ -138,11 +180,11 @@ router.post("/", async (req, res) => {
                     if (potencia_nueva && potencia_nueva > 0) {
                         // Actualizar tecnología y potencia
                         updateQuery = "UPDATE luminaria SET tecnologia = $1, potencia_w = $2 WHERE CAST(numero_lampara AS TEXT) = CAST($3 AS TEXT) OR numero_lampara = $4 RETURNING *";
-                        updateParams = [tecNormalizada, potencia_nueva, numero_lampara, numero_lampara];
+                        updateParams = [tecNormalizada, potencia_nueva, numeroLamparaDb, numeroLamparaDb];
                     } else {
                         // Solo actualizar tecnología
                         updateQuery = "UPDATE luminaria SET tecnologia = $1 WHERE CAST(numero_lampara AS TEXT) = CAST($2 AS TEXT) OR numero_lampara = $3 RETURNING *";
-                        updateParams = [tecNormalizada, numero_lampara, numero_lampara];
+                        updateParams = [tecNormalizada, numeroLamparaDb, numeroLamparaDb];
                     }
                     
                     const updateResult = await client.query(updateQuery, updateParams);
@@ -151,12 +193,41 @@ router.post("/", async (req, res) => {
                         console.log(`✅ Lámpara actualizada exitosamente: Número=${updateResult.rows[0].numero_lampara}, Tecnología=${updateResult.rows[0].tecnologia}, Potencia=${updateResult.rows[0].potencia_w}W`);
                         cambiosRealizados.cambioTecnologiaAplicado = true;
                     } else {
-                        console.warn(`⚠️ No se pudo actualizar la lámpara ${numero_lampara}`);
+                        console.warn(`⚠️ No se pudo actualizar la lámpara ${numeroLamparaDb}`);
                         cambiosRealizados.cambioTecnologiaAplicado = false;
                     }
                 }
             }
         }
+
+        const query = `
+            INSERT INTO novedad_luminaria (
+                numero_lampara,
+                tipo_novedad,
+                tecnologia_anterior,
+                tecnologia_nueva,
+                accion,
+                fecha_novedad,
+                observacion,
+                codigo_pqr,
+                id_electricista
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING *
+        `;
+
+        const values = [
+            numeroLamparaDb,
+            tipo_novedad,
+            normalizarTecnologia(tecnologia_anterior),
+            normalizarTecnologia(tecnologia_nueva),
+            accion,
+            fecha_novedad || new Date(),
+            observacion,
+            codigoPqrNormalizado,
+            electricistaDocumento
+        ];
+
+        const result = await client.query(query, values);
 
         await client.query("COMMIT");
         
@@ -170,7 +241,7 @@ router.post("/", async (req, res) => {
     } catch (error) {
         await client.query("ROLLBACK");
         console.error("Error creando novedad:", error);
-        res.status(500).json({ error: "Error creando novedad" });
+        res.status(500).json({ error: error.message || "Error creando novedad" });
     } finally {
         client.release();
     }
@@ -190,7 +261,9 @@ router.put("/:id", async (req, res) => {
         tecnologia_anterior,
         tecnologia_nueva,
         fecha_novedad,
-        observacion
+        observacion,
+        codigo_pqr,
+        id_electricista
     } = req.body;
 
     const client = await pool.connect();
@@ -222,6 +295,24 @@ router.put("/:id", async (req, res) => {
         const tecnologiaNuevaFinal = String(tipoFinal).toUpperCase() === "CAMBIO_TECNOLOGIA"
             ? normalizarTecnologia(tecnologia_nueva !== undefined ? tecnologia_nueva : actual.tecnologia_nueva)
             : null;
+        const codigoPqrFinal = codigo_pqr !== undefined
+            ? (String(codigo_pqr || "").trim() || null)
+            : actual.codigo_pqr;
+        const idElectricistaFinal = id_electricista !== undefined
+            ? (String(id_electricista || "").trim() || null)
+            : actual.id_electricista;
+
+        if (idElectricistaFinal) {
+            const electricistaCheck = await client.query(
+                `SELECT documento FROM electricista WHERE documento = $1`,
+                [idElectricistaFinal]
+            );
+
+            if (electricistaCheck.rows.length === 0) {
+                await client.query("ROLLBACK");
+                return res.status(400).json({ error: "Electricista no encontrado para la novedad" });
+            }
+        }
 
         const updateResult = await client.query(
             `UPDATE novedad_luminaria
@@ -230,8 +321,10 @@ router.put("/:id", async (req, res) => {
                  tecnologia_anterior = $3,
                  tecnologia_nueva = $4,
                  fecha_novedad = $5,
-                 observacion = $6
-             WHERE id_novedad = $7
+                 observacion = $6,
+                 codigo_pqr = $7,
+                 id_electricista = $8
+             WHERE id_novedad = $9
              RETURNING *`,
             [
                 numero_lampara !== undefined ? numero_lampara : actual.numero_lampara,
@@ -240,6 +333,8 @@ router.put("/:id", async (req, res) => {
                 tecnologiaNuevaFinal,
                 fecha_novedad || actual.fecha_novedad,
                 observacion !== undefined ? (observacion || null) : actual.observacion,
+                codigoPqrFinal,
+                idElectricistaFinal,
                 idNovedad
             ]
         );

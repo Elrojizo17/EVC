@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { getNovedades, updateNovedad } from "../api/novedades.api";
 import { getGastos, createGasto, deleteGasto } from "../api/gastos.api";
 import { getInventario } from "../api/inventario.api";
 import { getElectricistas } from "../api/electricistas.api";
 import { getCostoTotalMovimiento } from "../utils/gastos";
+import { calcularSiguienteCodigoPqr } from "../utils/pqr";
 import { useNotification } from "../hooks/useNotification";
 import OtpModal from "../components/OtpModal";
 
@@ -43,6 +44,8 @@ export default function ReporteNovedades() {
         tecnologia_anterior: "",
         tecnologia_nueva: "",
         fecha_novedad: "",
+        id_electricista: "",
+        codigo_pqr: "",
         observacion: ""
     });
     const [formMovimiento, setFormMovimiento] = useState({
@@ -59,34 +62,93 @@ export default function ReporteNovedades() {
     const [pendingOtpAction, setPendingOtpAction] = useState(null);
     const { success, error: errorNotification } = useNotification();
 
-    useEffect(() => {
-        cargarDatos();
-    }, []);
-
-    const cargarDatos = async () => {
+    const cargarDatos = useCallback(async ({ silencioso = false } = {}) => {
         try {
-            setLoading(true);
-            const [novedadesData, gastosData] = await Promise.all([
-                getNovedades(),
-                getGastos()
-            ]);
-            setNovedades(Array.isArray(novedadesData) ? novedadesData : []);
-            setGastos(Array.isArray(gastosData) ? gastosData : []);
+            if (!silencioso) {
+                setLoading(true);
+            }
 
-            const [inventarioData, electricistasData] = await Promise.all([
+            const [novedadesData, gastosData, inventarioData, electricistasData] = await Promise.all([
+                getNovedades(),
+                getGastos(),
                 getInventario(),
                 getElectricistas()
             ]);
 
-            setInventario(Array.isArray(inventarioData) ? inventarioData : []);
-            setElectricistas(Array.isArray(electricistasData) ? electricistasData : []);
+            const novedadesNormalizadas = Array.isArray(novedadesData) ? novedadesData : [];
+            const gastosNormalizados = Array.isArray(gastosData) ? gastosData : [];
+            const inventarioNormalizado = Array.isArray(inventarioData) ? inventarioData : [];
+            const electricistasNormalizados = Array.isArray(electricistasData) ? electricistasData : [];
+
+            setNovedades(novedadesNormalizadas);
+            setGastos(gastosNormalizados);
+            setInventario(inventarioNormalizado);
+            setElectricistas(electricistasNormalizados);
+            setError("");
+
+            setNovedadDetalle((prev) => {
+                if (!prev) {
+                    return prev;
+                }
+
+                const actualizada = novedadesNormalizadas.find(
+                    (n) => Number(n.id_novedad) === Number(prev.id_novedad)
+                );
+
+                return actualizada || null;
+            });
+
+            setNovedadMovimientos((prev) => {
+                if (!prev) {
+                    return prev;
+                }
+
+                const actualizada = novedadesNormalizadas.find(
+                    (n) => Number(n.id_novedad) === Number(prev.id_novedad)
+                );
+
+                return actualizada || null;
+            });
         } catch (err) {
             console.error("Error cargando reporte de novedades:", err);
             setError("No se pudo cargar el reporte de novedades.");
         } finally {
-            setLoading(false);
+            if (!silencioso) {
+                setLoading(false);
+            }
         }
-    };
+    }, []);
+
+    useEffect(() => {
+        cargarDatos();
+    }, [cargarDatos]);
+
+    useEffect(() => {
+        const handleOtpAccionConfirmada = () => {
+            cargarDatos({ silencioso: true });
+        };
+
+        window.addEventListener("otp-accion-confirmada", handleOtpAccionConfirmada);
+        return () => {
+            window.removeEventListener("otp-accion-confirmada", handleOtpAccionConfirmada);
+        };
+    }, [cargarDatos]);
+
+    useEffect(() => {
+        const recargarSiVisible = () => {
+            if (!document.hidden) {
+                cargarDatos({ silencioso: true });
+            }
+        };
+
+        window.addEventListener("focus", recargarSiVisible);
+        document.addEventListener("visibilitychange", recargarSiVisible);
+
+        return () => {
+            window.removeEventListener("focus", recargarSiVisible);
+            document.removeEventListener("visibilitychange", recargarSiVisible);
+        };
+    }, [cargarDatos]);
 
     const novedadesFiltradas = useMemo(() => {
         const termino = busqueda.trim().toLowerCase();
@@ -140,6 +202,8 @@ export default function ReporteNovedades() {
         return base;
     }, [novedades]);
 
+    const siguienteCodigoPqr = useMemo(() => calcularSiguienteCodigoPqr(gastos), [gastos]);
+
     const movimientosDetalle = useMemo(() => {
         if (!novedadDetalle) {
             return [];
@@ -153,6 +217,41 @@ export default function ReporteNovedades() {
             return ordenCodigoMovimientos === "asc" ? comparacion : -comparacion;
         });
     }, [movimientosPorNovedad, novedadDetalle, ordenCodigoMovimientos]);
+
+    const contextoDetalleNovedad = useMemo(() => {
+        if (!novedadDetalle) {
+            return { pqr: "-", electricista: "-", observacion: "-" };
+        }
+
+        const movimientosAsociados = movimientosPorNovedad.get(Number(novedadDetalle.id_novedad)) || [];
+        const movimientoReciente = [...movimientosAsociados]
+            .sort((a, b) => Number(b.id_gasto || 0) - Number(a.id_gasto || 0))[0];
+
+        const pqr = String(
+            novedadDetalle.codigo_pqr
+            || movimientoReciente?.codigo_pqr
+            || novedadDetalle.codigo_pqr_reciente
+            || ""
+        ).trim() || "-";
+
+        const electricista = String(
+            novedadDetalle.nombre_electricista
+            || novedadDetalle.id_electricista
+            || movimientoReciente?.nombre_electricista
+            || movimientoReciente?.id_electricista
+            || novedadDetalle.nombre_electricista_reciente
+            || novedadDetalle.id_electricista_reciente
+            || ""
+        ).trim() || "-";
+
+        const observacion = String(
+            novedadDetalle.observacion
+            || movimientoReciente?.observacion
+            || ""
+        ).trim() || "-";
+
+        return { pqr, electricista, observacion };
+    }, [novedadDetalle, movimientosPorNovedad]);
 
     const novedadesOrdenadas = useMemo(() => {
         return [...novedadesFiltradas].sort((a, b) => {
@@ -195,7 +294,37 @@ export default function ReporteNovedades() {
         return [...lista].sort((a, b) => Number(b.id_gasto || 0) - Number(a.id_gasto || 0));
     }, [movimientosPorNovedad, novedadMovimientos]);
 
+    const obtenerContextoMovimientoNovedad = (novedad) => {
+        const movimientosAsociados = [...(movimientosPorNovedad.get(Number(novedad?.id_novedad)) || [])]
+            .sort((a, b) => Number(b.id_gasto || 0) - Number(a.id_gasto || 0));
+
+        const valorNoVacio = (extractor) => {
+            for (const mov of movimientosAsociados) {
+                const valor = String(extractor(mov) || "").trim();
+                if (valor) {
+                    return valor;
+                }
+            }
+            return "";
+        };
+
+        const tipoMovimientoSugerido = (() => {
+            const tipo = valorNoVacio((mov) => mov.tipo_movimiento).toUpperCase();
+            const tiposValidos = ["DESPACHADO", "PRESTADO", "MATERIAL_EXCEDENTE", "DEVOLUCION", "ENTRADA"];
+            return tiposValidos.includes(tipo) ? tipo : "DESPACHADO";
+        })();
+
+        return {
+            tipo_movimiento: tipoMovimientoSugerido,
+            id_electricista: valorNoVacio((mov) => mov.id_electricista),
+            codigo_pqr: valorNoVacio((mov) => mov.codigo_pqr) || siguienteCodigoPqr,
+            observacion: valorNoVacio((mov) => mov.observacion) || String(novedad?.observacion || "").trim()
+        };
+    };
+
     const abrirEditorMovimientos = (novedad) => {
+        const contextoMovimiento = obtenerContextoMovimientoNovedad(novedad);
+
         setNovedadMovimientos(novedad);
         setItemError("");
         setNovedadError("");
@@ -205,13 +334,15 @@ export default function ReporteNovedades() {
             tecnologia_anterior: novedad.tecnologia_anterior || "",
             tecnologia_nueva: novedad.tecnologia_nueva || "",
             fecha_novedad: formatDateForInput(novedad.fecha_novedad),
+            id_electricista: novedad.id_electricista || novedad.id_electricista_reciente || contextoMovimiento.id_electricista || "",
+            codigo_pqr: novedad.codigo_pqr || novedad.codigo_pqr_reciente || contextoMovimiento.codigo_pqr || siguienteCodigoPqr,
             observacion: novedad.observacion || ""
         });
         setFormMovimiento({
-            tipo_movimiento: "DESPACHADO",
-            id_electricista: "",
-            codigo_pqr: "",
-            observacion: ""
+            tipo_movimiento: contextoMovimiento.tipo_movimiento,
+            id_electricista: contextoMovimiento.id_electricista,
+            codigo_pqr: contextoMovimiento.codigo_pqr,
+            observacion: contextoMovimiento.observacion
         });
         setFilasGasto([createGastoRow()]);
         setPermitirGastoVacio(false);
@@ -238,6 +369,12 @@ export default function ReporteNovedades() {
         }
         if (!String(formNovedad.fecha_novedad || "").trim()) {
             return "La fecha de novedad es obligatoria";
+        }
+        if (!String(formNovedad.id_electricista || "").trim()) {
+            return "Selecciona un electricista responsable";
+        }
+        if (!String(formNovedad.codigo_pqr || "").trim()) {
+            return "El código PQR es obligatorio";
         }
         if (formNovedad.tipo_novedad === "CAMBIO_TECNOLOGIA") {
             if (!String(formNovedad.tecnologia_anterior || "").trim()) {
@@ -443,11 +580,16 @@ export default function ReporteNovedades() {
 
     const limpiarFormularioMovimiento = () => {
         setItemError("");
+
+        const contextoMovimiento = novedadMovimientos
+            ? obtenerContextoMovimientoNovedad(novedadMovimientos)
+            : null;
+
         setFormMovimiento({
-            tipo_movimiento: "DESPACHADO",
-            id_electricista: "",
-            codigo_pqr: "",
-            observacion: ""
+            tipo_movimiento: contextoMovimiento?.tipo_movimiento || "DESPACHADO",
+            id_electricista: contextoMovimiento?.id_electricista || "",
+            codigo_pqr: contextoMovimiento?.codigo_pqr || siguienteCodigoPqr,
+            observacion: contextoMovimiento?.observacion || ""
         });
         setFilasGasto([createGastoRow()]);
         setPermitirGastoVacio(false);
@@ -517,6 +659,8 @@ export default function ReporteNovedades() {
                     ? String(formNovedad.tecnologia_nueva || "").trim().toLowerCase()
                     : null,
             fecha_novedad: formNovedad.fecha_novedad,
+            id_electricista: String(formNovedad.id_electricista || "").trim() || null,
+            codigo_pqr: String(formNovedad.codigo_pqr || "").trim() || null,
             observacion: String(formNovedad.observacion || "").trim() || null
         };
 
@@ -713,9 +857,9 @@ export default function ReporteNovedades() {
 
                         <div style={{ marginBottom: "16px", fontSize: "13px", color: "#334155" }}>
                             <div><strong>Fecha:</strong> {formatDate(novedadDetalle.fecha_novedad)}</div>
-                            <div><strong>Tecnología anterior:</strong> {novedadDetalle.tecnologia_anterior || "-"}</div>
-                            <div><strong>Tecnología nueva:</strong> {novedadDetalle.tecnologia_nueva || "-"}</div>
-                            <div><strong>Observación:</strong> {novedadDetalle.observacion || "-"}</div>
+                            <div><strong>PQR:</strong> {contextoDetalleNovedad.pqr}</div>
+                            <div><strong>Electricista:</strong> {contextoDetalleNovedad.electricista}</div>
+                            <div><strong>Observación:</strong> {contextoDetalleNovedad.observacion}</div>
                         </div>
 
                         <h3 style={{ color: "#0f7c90", marginBottom: "10px" }}>Movimientos asociados ({movimientosDetalle.length})</h3>
@@ -854,6 +998,44 @@ export default function ReporteNovedades() {
                                             <option key={tipo} value={tipo}>{tipo.replace("_", " ")}</option>
                                         ))}
                                     </select>
+                                </div>
+                                <div>
+                                    <label style={labelStyle}>Electricista responsable *</label>
+                                    <select
+                                        name="id_electricista"
+                                        value={formNovedad.id_electricista}
+                                        onChange={handleChangeNovedad}
+                                        style={inputStyle}
+                                        disabled={submitNovedadLoading}
+                                        required
+                                    >
+                                        <option value="">Seleccione electricista</option>
+                                        {electricistas.map((e) => (
+                                            <option
+                                                key={e.id_electricista}
+                                                value={e.id_electricista}
+                                                style={{ color: e.activo ? "#0f172a" : "#9ca3af" }}
+                                            >
+                                                {e.nombre} (Doc: {e.documento})
+                                                {!e.activo ? " • No disponible" : ""}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+                                <div>
+                                    <label style={labelStyle}>Código PQR *</label>
+                                    <input
+                                        type="text"
+                                        name="codigo_pqr"
+                                        value={formNovedad.codigo_pqr}
+                                        onChange={handleChangeNovedad}
+                                        style={inputStyle}
+                                        disabled={submitNovedadLoading}
+                                        required
+                                    />
                                 </div>
                                 <div>
                                     <label style={labelStyle}>Observación</label>
@@ -1034,6 +1216,9 @@ export default function ReporteNovedades() {
                                         placeholder="Ej: PQR-12345"
                                         required={!permitirGastoVacio || hayDatosEnFilas}
                                     />
+                                    <div style={{ marginTop: "4px", fontSize: "11px", color: "#64748b" }}>
+                                        Sugerido: {siguienteCodigoPqr}. Este consecutivo se calcula con movimientos reales, no con el ID de novedad.
+                                    </div>
                                 </div>
 
                                 <div>

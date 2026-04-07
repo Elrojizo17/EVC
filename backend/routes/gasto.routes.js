@@ -125,7 +125,73 @@ router.post("/", async (req, res) => {
             ? Math.max(0, Number(stockResult.rows[0].stock_disponible || 0))
             : Math.max(0, producto.cantidad_inicial);
 
-        const electricistaDocumento = id_electricista ? String(id_electricista).trim() : "";
+        let electricistaDocumento = id_electricista ? String(id_electricista).trim() : "";
+        let codigoPqrFinal = codigo_pqr ? String(codigo_pqr).trim() : "";
+        let observacionFinal = observacion ? String(observacion).trim() : "";
+
+        // En modificaciones de novedades existentes, completar campos faltantes
+        // con el último movimiento asociado para mantener consistencia de trazabilidad.
+        if (id_novedad_luminaria) {
+            const contextoNovedadResult = await client.query(
+                `SELECT id_electricista, codigo_pqr, observacion
+                 FROM movimiento_bodega
+                 WHERE id_novedad_luminaria = $1
+                 ORDER BY fecha DESC, id_movimiento DESC
+                 LIMIT 1`,
+                [id_novedad_luminaria]
+            );
+
+            if (contextoNovedadResult.rows.length > 0) {
+                const contexto = contextoNovedadResult.rows[0];
+                if (!electricistaDocumento) {
+                    electricistaDocumento = String(contexto.id_electricista || "").trim();
+                }
+                if (!codigoPqrFinal) {
+                    codigoPqrFinal = String(contexto.codigo_pqr || "").trim();
+                }
+                if (!observacionFinal) {
+                    observacionFinal = String(contexto.observacion || "").trim();
+                }
+            }
+
+            // Si la novedad no tiene observación, heredar la observación del movimiento actual.
+            if (observacionFinal) {
+                await client.query(
+                    `UPDATE novedad_luminaria
+                     SET observacion = CASE
+                         WHEN observacion IS NULL OR BTRIM(observacion) = '' THEN $2
+                         ELSE observacion
+                     END
+                     WHERE id_novedad = $1`,
+                    [id_novedad_luminaria, observacionFinal]
+                );
+            }
+
+            if (codigoPqrFinal) {
+                await client.query(
+                    `UPDATE novedad_luminaria
+                     SET codigo_pqr = CASE
+                         WHEN codigo_pqr IS NULL OR BTRIM(codigo_pqr) = '' THEN $2
+                         ELSE codigo_pqr
+                     END
+                     WHERE id_novedad = $1`,
+                    [id_novedad_luminaria, codigoPqrFinal]
+                );
+            }
+
+            if (electricistaDocumento) {
+                await client.query(
+                    `UPDATE novedad_luminaria
+                     SET id_electricista = CASE
+                         WHEN id_electricista IS NULL OR BTRIM(id_electricista) = '' THEN $2
+                         ELSE id_electricista
+                     END
+                     WHERE id_novedad = $1`,
+                    [id_novedad_luminaria, electricistaDocumento]
+                );
+            }
+        }
+
         if (!electricistaDocumento && tipo_movimiento !== 'ENTRADA') {
             throw new Error("Debes seleccionar un electricista responsable");
         }
@@ -199,13 +265,13 @@ router.post("/", async (req, res) => {
             cantidadSolicitada,
             numero_orden || null,
             id_novedad_luminaria || null,
-            observacion || null,
+            observacionFinal || null,
             fechaMovimiento,
             electricistaDocumento || null,
-            codigo_pqr || null
+            codigoPqrFinal || null
         ];
 
-        const registrarMovimiento = async (tipo, cantidadMovimiento, idNovedadMovimiento = (id_novedad_luminaria || null), observacionMovimiento = (observacion || null)) => {
+        const registrarMovimiento = async (tipo, cantidadMovimiento, idNovedadMovimiento = (id_novedad_luminaria || null), observacionMovimiento = (observacionFinal || null)) => {
             const movimientoValues = [
                 prodCode,
                 tipo,
@@ -215,7 +281,7 @@ router.post("/", async (req, res) => {
                 observacionMovimiento,
                 fechaMovimiento,
                 electricistaDocumento || null,
-                codigo_pqr || null
+                codigoPqrFinal || null
             ];
 
             const movimientoResult = await client.query(query, movimientoValues);
@@ -236,10 +302,17 @@ router.post("/", async (req, res) => {
 
             if (cantidadExcedente > 0) {
                 const observacionExcedente = [
-                    observacion || "",
+                    observacionFinal || "",
                     `Ajuste automático por stock insuficiente (${cantidadExcedente})`
                 ].filter(Boolean).join(" | ");
-                const movimientoExcedente = await registrarMovimiento("MATERIAL_EXCEDENTE", cantidadExcedente, null, observacionExcedente || null);
+                // Si el movimiento original venía ligado a una novedad (p.ej. edición con OTP),
+                // el ajuste por material excedente debe conservar esa asociación para trazabilidad.
+                const movimientoExcedente = await registrarMovimiento(
+                    "MATERIAL_EXCEDENTE",
+                    cantidadExcedente,
+                    id_novedad_luminaria || null,
+                    observacionExcedente || null
+                );
                 movimientosRegistrados.push(movimientoExcedente);
             }
 
