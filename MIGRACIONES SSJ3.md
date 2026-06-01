@@ -1,25 +1,25 @@
-# MIGRACIONES SSJ3
+﻿# MIGRACIONES SSJ3
 
 Resumen breve
 ------------
 
-Durante la ejecución de las migraciones se detectó un fallo que impedía completar el proceso: varias migraciones y vistas esperaban la existencia de la tabla `lote_producto` y columnas relacionadas en `movimiento_bodega`, pero la tabla/columnas no estaban presentes en la base de datos.
+Durante la ejecuciÃ³n de las migraciones se detectÃ³ un fallo que impedÃ­a completar el proceso: varias migraciones y vistas esperaban la existencia de la tabla `lote_producto` y columnas relacionadas en `movimiento_bodega`, pero la tabla/columnas no estaban presentes en la base de datos.
 
-Qué pasó (pasos principales)
+QuÃ© pasÃ³ (pasos principales)
 ---------------------------
 
-- Al ejecutar las migraciones se produjo el error inicial: "no existe la relación «lote_producto»" al correr `20260317_improve_devolucion_tracking.sql`.
-- Se creó una migración nueva para añadir la tabla mínima `lote_producto` (`20260301_create_lote_producto.sql`).
-- Se añadió la columna `id_lote` a `movimiento_bodega` y la FK a `lote_producto` con un bloque seguro (DO $$ ... EXECUTE ...) para evitar errores de sintaxis en entornos distintos (`20260302_add_id_lote_to_movimiento_bodega.sql`).
+- Al ejecutar las migraciones se produjo el error inicial: "no existe la relaciÃ³n Â«lote_productoÂ»" al correr `20260317_improve_devolucion_tracking.sql`.
+- Se creÃ³ una migraciÃ³n nueva para aÃ±adir la tabla mÃ­nima `lote_producto` (`20260301_create_lote_producto.sql`).
+- Se aÃ±adiÃ³ la columna `id_lote` a `movimiento_bodega` y la FK a `lote_producto` con un bloque seguro (DO $$ ... EXECUTE ...) para evitar errores de sintaxis en entornos distintos (`20260302_add_id_lote_to_movimiento_bodega.sql`).
 - Se corrigieron migraciones posteriores para que sean idempotentes y robustas:
-  - `20260330_add_numero_orden_to_movimientos.sql` → usar `ADD COLUMN IF NOT EXISTS` y `CREATE INDEX IF NOT EXISTS`.
-  - `20260330_assign_orden_000_initial_inventory.sql` → evitar insertar movimientos con `cantidad = 0` (filtrar `p.cantidad_inicial > 0`).
-  - `20260330_clean_observaciones_entrada.sql` → des/rehabilitar trigger comprobando existencia para evitar errores si el trigger aún no existe.
+  - `20260330_add_numero_orden_to_movimientos.sql` â†’ usar `ADD COLUMN IF NOT EXISTS` y `CREATE INDEX IF NOT EXISTS`.
+  - `20260330_assign_orden_000_initial_inventory.sql` â†’ evitar insertar movimientos con `cantidad = 0` (filtrar `p.cantidad_inicial > 0`).
+  - `20260330_clean_observaciones_entrada.sql` â†’ des/rehabilitar trigger comprobando existencia para evitar errores si el trigger aÃºn no existe.
 
-Archivos añadidos / modificados
+Archivos aÃ±adidos / modificados
 ------------------------------
 
-- Añadidos:
+- AÃ±adidos:
   - `backend/migrations/20260301_create_lote_producto.sql`
   - `backend/migrations/20260302_add_id_lote_to_movimiento_bodega.sql`
 - Modificados:
@@ -30,7 +30,7 @@ Archivos añadidos / modificados
 Resultado
 ---------
 
-Tras aplicar las correcciones y volver a ejecutar el proceso de migraciones, todas las migraciones se completaron satisfactoriamente y el servidor arrancó en `http://localhost:3000`.
+Tras aplicar las correcciones y volver a ejecutar el proceso de migraciones, todas las migraciones se completaron satisfactoriamente y el servidor arrancÃ³ en `https://luminariasevc.onrender.com`.
 
 Comandos para reproducir / verificar
 -----------------------------------
@@ -42,14 +42,15 @@ cd backend
 node server.js
 ```
 
-Qué revisar después (sugerencias)
+QuÃ© revisar despuÃ©s (sugerencias)
 --------------------------------
 
-- Hacer un commit de las migraciones añadidas/corregidas y abrir un PR para revisión.
-- Ejecutar pruebas de integración que utilicen `movimiento_bodega` y `lote_producto`.
+- Hacer un commit de las migraciones aÃ±adidas/corregidas y abrir un PR para revisiÃ³n.
+- Ejecutar pruebas de integraciÃ³n que utilicen `movimiento_bodega` y `lote_producto`.
 - Revisar si se necesita un backfill de datos en `lote_producto` para conservar historial (esto depende de sus datos de origen).
 
 Contacto
 -------
 
 Si quieres que haga el commit y el PR, o que prepare un script de backfill, dime y lo hago.
+

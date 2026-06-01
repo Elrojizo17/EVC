@@ -1,4 +1,4 @@
-const API_URL = "http://localhost:3000/api/gastos";
+const API_URL = "https://luminariasevc.onrender.com/api/gastos";
 
 export const getGastos = async () => {
     const res = await fetch(`${API_URL}?_=${Date.now()}`, { cache: "no-store" });

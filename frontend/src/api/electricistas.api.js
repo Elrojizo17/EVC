@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_URL = "http://localhost:3000/api/electricistas";
+const API_URL = "https://luminariasevc.onrender.com/api/electricistas";
 
 // Get all electricians
 export const getElectricistas = async () => {

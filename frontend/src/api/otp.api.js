@@ -1,4 +1,4 @@
-const API_URL = "http://localhost:3000/api/otp";
+const API_URL = "https://luminariasevc.onrender.com/api/otp";
 
 export const solicitarOtp = async (email) => {
     const res = await fetch(`${API_URL}/solicitar`, {

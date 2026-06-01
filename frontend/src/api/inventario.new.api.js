@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_URL = "http://localhost:3000/api/inventario";
+const API_URL = "https://luminariasevc.onrender.com/api/inventario";
 
 // Productos
 export const getProductosConLotes = async () => {

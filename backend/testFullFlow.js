@@ -3,7 +3,7 @@ const axios = require("axios");
 
 async function testFullFlow() {
     try {
-        console.log("\n🔍 TEST COMPLETO: BD → API → Frontend\n");
+        console.log("\nðŸ” TEST COMPLETO: BD â†’ API â†’ Frontend\n");
 
         // 1. Verificar directamente en BD
         console.log("=== PASO 1: Consulta directa a BD ===");
@@ -36,32 +36,32 @@ async function testFullFlow() {
         // 2. Llamar al API
         console.log("\n=== PASO 2: Llamar API /todos ===");
         try {
-            const apiResponse = await axios.get("http://localhost:3000/api/inventario/todos");
+            const apiResponse = await axios.get("https://luminariasevc.onrender.com/api/inventario/todos");
             const data = apiResponse.data;
             console.log(`API recibido: ${data.length} elementos`);
             
             if (data.length === 0) {
-                console.log("⚠️ API devolvió 0 elementos!");
+                console.log("âš ï¸ API devolviÃ³ 0 elementos!");
             } else {
-                console.log(`✅ API devolvió ${data.length} elementos`);
+                console.log(`âœ… API devolviÃ³ ${data.length} elementos`);
                 console.log(`Primeros 5:`);
                 data.slice(0, 5).forEach((item, i) => {
                     console.log(`  ${i+1}. ${item.codigo_elemento || item.codigo} - ${item.elemento || item.nombre}`);
                 });
-                console.log(`Últimos 5:`);
+                console.log(`Ãšltimos 5:`);
                 data.slice(-5).forEach((item, i) => {
                     console.log(`  ${data.length - 5 + i + 1}. ${item.codigo_elemento || item.codigo} - ${item.elemento || item.nombre}`);
                 });
             }
 
-            // 3. Verificar consolidación como lo hace el frontend
-            console.log("\n=== PASO 3: Consolidación (como lo hace frontend) ===");
+            // 3. Verificar consolidaciÃ³n como lo hace el frontend
+            console.log("\n=== PASO 3: ConsolidaciÃ³n (como lo hace frontend) ===");
             const mapa = new Map();
 
             data.forEach((item) => {
                 const codigo = String(item.codigo_elemento || "").trim().toUpperCase();
                 if (!codigo) {
-                    console.log(`⚠️ Elemento sin código: ${item.elemento}`);
+                    console.log(`âš ï¸ Elemento sin cÃ³digo: ${item.elemento}`);
                     return;
                 }
 
@@ -77,10 +77,10 @@ async function testFullFlow() {
             });
 
             const consolidado = Array.from(mapa.values());
-            console.log(`Después de consolidación: ${consolidado.length} elementos`);
+            console.log(`DespuÃ©s de consolidaciÃ³n: ${consolidado.length} elementos`);
 
-            // 4. Aplicar búsqueda vacía (como lo hace el frontend)
-            console.log("\n=== PASO 4: Filtrado con búsqueda vacía ===");
+            // 4. Aplicar bÃºsqueda vacÃ­a (como lo hace el frontend)
+            console.log("\n=== PASO 4: Filtrado con bÃºsqueda vacÃ­a ===");
             const filtrado = consolidado.filter((item) => {
                 const termino = "".toLowerCase();
                 return (
@@ -89,20 +89,20 @@ async function testFullFlow() {
                 );
             });
 
-            console.log(`Después de filtrar: ${filtrado.length} elementos`);
+            console.log(`DespuÃ©s de filtrar: ${filtrado.length} elementos`);
 
             if (filtrado.length !== consolidado.length) {
-                console.log("❌ El filtro está eliminando elementos!");
+                console.log("âŒ El filtro estÃ¡ eliminando elementos!");
             }
 
-            // 5. Verificar duplicados de códigos
+            // 5. Verificar duplicados de cÃ³digos
             console.log("\n=== PASO 5: Verificar duplicados ===");
             const codigosApi = data.map(x => String(x.codigo_elemento || "").trim().toUpperCase()).filter(Boolean);
             const codigosUnicos = new Set(codigosApi);
             if (codigosApi.length !== codigosUnicos.size) {
-                console.log(`⚠️ Hay duplicados: ${codigosApi.length} total, ${codigosUnicos.size} únicos`);
+                console.log(`âš ï¸ Hay duplicados: ${codigosApi.length} total, ${codigosUnicos.size} Ãºnicos`);
             } else {
-                console.log(`✅ Sin duplicados`);
+                console.log(`âœ… Sin duplicados`);
             }
 
             console.log("\n=== RESUMEN ===");
@@ -112,9 +112,9 @@ async function testFullFlow() {
             console.log(`Frontend (filtrado): ${filtrado.length}`);
 
         } catch (error) {
-            console.error("❌ Error llamando al API:", error.message);
+            console.error("âŒ Error llamando al API:", error.message);
             if (error.code === "ECONNREFUSED") {
-                console.log("El servidor NO está corriendo en http://localhost:3000");
+                console.log("El servidor NO estÃ¡ corriendo en https://luminariasevc.onrender.com");
             }
         }
 

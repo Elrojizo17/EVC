@@ -1,4 +1,4 @@
-const API_URL = "http://localhost:3000/api/novedades";
+const API_URL = "https://luminariasevc.onrender.com/api/novedades";
 
 export const getNovedades = async () => {
     const res = await fetch(`${API_URL}?_=${Date.now()}`, { cache: "no-store" });
@@ -45,7 +45,7 @@ export const diagnosticarLampara = async (numeroLampara) => {
     const res = await fetch(url);
     const data = await res.json();
     if (!res.ok || data.error) {
-        throw new Error(data.error || "Error consultando información de la lámpara");
+        throw new Error(data.error || "Error consultando informaciÃ³n de la lÃ¡mpara");
     }
     return data;
 };

@@ -1,7 +1,7 @@
 import axios from "axios";
 import { getGastos } from "./gastos.api";
 
-const API_URL = "http://localhost:3000/api/inventario";
+const API_URL = "https://luminariasevc.onrender.com/api/inventario";
 
 // Alias para compatibilidad - usa el nuevo endpoint plano
 export const getInventario = async () => {
@@ -112,7 +112,7 @@ export const updateElemento = async (id_lote, data) => {
     }
 };
 
-// Alias para compatibilidad con código anterior
+// Alias para compatibilidad con cÃ³digo anterior
 export const getHistorialElemento = async (codigoProducto) => {
     try {
         // En el nuevo modelo, el historial se obtiene por codigo_producto

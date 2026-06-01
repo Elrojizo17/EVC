@@ -2,12 +2,12 @@ const axios = require("axios");
 
 async function simularFrontend() {
     try {
-        console.log("\n🎭 SIMULACIÓN DEL FRONTEND\n");
+        console.log("\nðŸŽ­ SIMULACIÃ“N DEL FRONTEND\n");
 
         // 1. Traer datos del API
-        const response = await axios.get("http://localhost:3000/api/inventario/todos");
+        const response = await axios.get("https://luminariasevc.onrender.com/api/inventario/todos");
         const inventario = response.data;
-        console.log(`1️⃣ API devolvió: ${inventario.length} elementos`);
+        console.log(`1ï¸âƒ£ API devolviÃ³: ${inventario.length} elementos`);
 
         // 2. Consolidar (exacto como lo hace el frontend)
         const mapa = new Map();
@@ -31,22 +31,22 @@ async function simularFrontend() {
         });
 
         const inventarioConsolidado = Array.from(mapa.values());
-        console.log(`2️⃣ Consolidado: ${inventarioConsolidado.length} elementos`);
+        console.log(`2ï¸âƒ£ Consolidado: ${inventarioConsolidado.length} elementos`);
 
-        // 3. Buscar específicamente el elemento 3
+        // 3. Buscar especÃ­ficamente el elemento 3
         const elemento3 = inventarioConsolidado.find(x => x.codigo_elemento === "3");
-        console.log("\n3️⃣ ELEMENTO '3':");
+        console.log("\n3ï¸âƒ£ ELEMENTO '3':");
         if (elemento3) {
-            console.log(`   Código: ${elemento3.codigo_elemento}`);
+            console.log(`   CÃ³digo: ${elemento3.codigo_elemento}`);
             console.log(`   Nombre: ${elemento3.elemento}`);
             console.log(`   Cantidad (inicial): ${elemento3.cantidad}`);
             console.log(`   Stock disponible: ${elemento3.stock_disponible}`);
-            console.log(`   ✅ SISTE EN CONSOLIDADO`);
+            console.log(`   âœ… SISTE EN CONSOLIDADO`);
         } else {
-            console.log(`   ❌ NO ESTÁ EN CONSOLIDADO`);
+            console.log(`   âŒ NO ESTÃ EN CONSOLIDADO`);
         }
 
-        // 4. Filtrar (búsqueda vacía como cuando abre la página)
+        // 4. Filtrar (bÃºsqueda vacÃ­a como cuando abre la pÃ¡gina)
         const busqueda = "";
         const termino = busqueda.toLowerCase();
         const inventarioFiltrado = inventarioConsolidado.filter((item) => {
@@ -56,22 +56,22 @@ async function simularFrontend() {
             );
         });
 
-        console.log(`\n4️⃣ Después de filtrar con búsqueda vacía: ${inventarioFiltrado.length} elementos`);
+        console.log(`\n4ï¸âƒ£ DespuÃ©s de filtrar con bÃºsqueda vacÃ­a: ${inventarioFiltrado.length} elementos`);
 
-        // 5. Verificar si el 3 está en el filtrado
+        // 5. Verificar si el 3 estÃ¡ en el filtrado
         const elemento3Filtrado = inventarioFiltrado.find(x => x.codigo_elemento === "3");
         if (elemento3Filtrado) {
-            console.log(`   ✅ ELEMENTO 3 SÍ APARECE EN TABLA`);
+            console.log(`   âœ… ELEMENTO 3 SÃ APARECE EN TABLA`);
         } else {
-            console.log(`   ❌ ELEMENTO 3 NO APARECE EN TABLA`);
+            console.log(`   âŒ ELEMENTO 3 NO APARECE EN TABLA`);
         }
 
-        // 6. Ver todos los elementos que sí aparecen (solo códigos)
-        console.log("\n5️⃣ ELEMENTOS QUE SISTEN APARECER:");
+        // 6. Ver todos los elementos que sÃ­ aparecen (solo cÃ³digos)
+        console.log("\n5ï¸âƒ£ ELEMENTOS QUE SISTEN APARECER:");
         console.log(inventarioFiltrado.map(x => x.codigo_elemento).join(", "));
 
-        // 7. Ver cuál falta
-        console.log("\n6️⃣ BÚSQUEDA ESPECÍFICA: '3'");
+        // 7. Ver cuÃ¡l falta
+        console.log("\n6ï¸âƒ£ BÃšSQUEDA ESPECÃFICA: '3'");
         const busqueda3 = "3";
         const termino3 = busqueda3.toLowerCase();
         const filtrado3 = inventarioConsolidado.filter((item) => {
@@ -89,7 +89,7 @@ async function simularFrontend() {
     } catch (error) {
         console.error("Error:", error.message);
         if (error.code === "ECONNREFUSED") {
-            console.log("❌ El servidor no está corriendo. Falta iniciar: npm start (en backend)");
+            console.log("âŒ El servidor no estÃ¡ corriendo. Falta iniciar: npm start (en backend)");
         }
     }
 }

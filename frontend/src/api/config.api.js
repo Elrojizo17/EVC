@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_URL = "http://localhost:3000/api/config";
+const API_URL = "https://luminariasevc.onrender.com/api/config";
 
 export const getUiConfig = async () => {
     try {

@@ -5,7 +5,7 @@ import { getGastos } from "../api/gastos.api";
 
 const getLuminarias = async () => {
     try {
-        const response = await axios.get("http://localhost:3000/api/luminarias");
+        const response = await axios.get("https://luminariasevc.onrender.com/api/luminarias");
         return response.data;
     } catch (error) {
         console.error("Error fetching luminarias:", error);
@@ -40,7 +40,7 @@ export default function StatsCards() {
             // Total de luminarias
             const total = Array.isArray(luminarias) ? luminarias.length : 0;
 
-            // Distribución por tecnología
+            // DistribuciÃ³n por tecnologÃ­a
             const led = luminarias.filter(l => String(l.tecnologia || "").toLowerCase().includes("led")).length;
             const sodio = luminarias.filter(l => String(l.tecnologia || "").toLowerCase().includes("sodio")).length;
             const metalHalide = luminarias.filter(l => String(l.tecnologia || "").toLowerCase().includes("metal_halide")).length;
@@ -48,11 +48,11 @@ export default function StatsCards() {
             // Novedades del mes actual
             const fechaActual = new Date();
             const mesActual = fechaActual.getMonth();
-            const añoActual = fechaActual.getFullYear();
+            const aÃ±oActual = fechaActual.getFullYear();
             const novedadesMes = Array.isArray(novedades) 
                 ? novedades.filter(n => {
                     const fechaNovedad = new Date(n.fecha_novedad);
-                    return fechaNovedad.getMonth() === mesActual && fechaNovedad.getFullYear() === añoActual;
+                    return fechaNovedad.getMonth() === mesActual && fechaNovedad.getFullYear() === aÃ±oActual;
                 }).length 
                 : 0;
 
@@ -74,7 +74,7 @@ export default function StatsCards() {
                 metalHalide
             });
         } catch (err) {
-            console.error("Error cargando estadísticas:", err);
+            console.error("Error cargando estadÃ­sticas:", err);
         } finally {
             setLoading(false);
         }
@@ -149,10 +149,10 @@ export default function StatsCards() {
                 </div>
             </div>
 
-            {/* Distribución por tecnología */}
+            {/* DistribuciÃ³n por tecnologÃ­a */}
             <div style={cardStyle}>
                 <div style={{ fontSize: "13px", color: "#64748b", marginBottom: "12px", fontWeight: "500" }}>
-                    DISTRIBUCIÓN
+                    DISTRIBUCIÃ“N
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
