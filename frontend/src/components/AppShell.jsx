@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import logoEvc from '../assets/evc-logo.svg';
+import { useAuth } from '../context/AuthContext';
 import '../pages/Dashboard.css';
 
-const menuOptions = [
+const menuOptionsBase = [
   { label: 'Mapa', path: '/' },
   { label: 'Registrar Novedad', path: '/novedad-censo' },
   { label: 'Ingresas Inventario', path: '/inventario-bodega' },
@@ -14,7 +15,15 @@ const menuOptions = [
 ];
 
 export default function AppShell({ children }) {
+  const { rol, usuario, logout } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  const menuOptions = useMemo(() => {
+    if (rol === 'INVITADO') {
+      return menuOptionsBase.filter((option) => option.path === '/');
+    }
+    return menuOptionsBase;
+  }, [rol]);
 
   return (
     <div className='dashboard-page app-shell-soft'>
@@ -51,6 +60,15 @@ export default function AppShell({ children }) {
                 </NavLink>
               ))}
             </nav>
+
+            <div className='dashboard-sidebar-footer'>
+              <div className='dashboard-user-role'>
+                {usuario?.nombre || 'Usuario'} · {rol || 'SIN ROL'}
+              </div>
+              <button type='button' className='dashboard-logout' onClick={logout}>
+                Cerrar sesion
+              </button>
+            </div>
           </div>
         </aside>
 

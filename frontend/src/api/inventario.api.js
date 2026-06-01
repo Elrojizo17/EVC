@@ -1,4 +1,4 @@
-import axios from "axios";
+import httpClient from "./httpClient";
 import { getGastos } from "./gastos.api";
 
 const API_URL = "https://luminariasevc.onrender.com/api/inventario";
@@ -6,7 +6,7 @@ const API_URL = "https://luminariasevc.onrender.com/api/inventario";
 // Alias para compatibilidad - usa el nuevo endpoint plano
 export const getInventario = async () => {
     try {
-        const response = await axios.get(`${API_URL}/todos`);
+        const response = await httpClient.get(`${API_URL}/todos`);
         return response.data;
     } catch (error) {
         console.error("Error fetching inventory:", error);
@@ -17,7 +17,7 @@ export const getInventario = async () => {
 // Productos
 export const getProductosConLotes = async () => {
     try {
-        const response = await axios.get(`${API_URL}/productos`);
+        const response = await httpClient.get(`${API_URL}/productos`);
         return response.data;
     } catch (error) {
         console.error("Error fetching products:", error);
@@ -27,7 +27,7 @@ export const getProductosConLotes = async () => {
 
 export const createProducto = async (data) => {
     try {
-        const response = await axios.post(`${API_URL}/productos`, data);
+        const response = await httpClient.post(`${API_URL}/productos`, data);
         return response.data;
     } catch (error) {
         console.error("Error creating product:", error);
@@ -39,7 +39,7 @@ export const createProducto = async (data) => {
 export const createLote = async (data) => {
     try {
         // Para el nuevo modelo, createLote crea un movimiento ENTRADA para un producto existente
-        const response = await axios.post(`${API_URL}/movimientos`, {
+        const response = await httpClient.post(`${API_URL}/movimientos`, {
             codigo_producto: data.codigo_producto,
             tipo_movimiento: 'ENTRADA',
             cantidad: data.cantidad,
@@ -56,7 +56,7 @@ export const createLote = async (data) => {
 
 export const getLoteDetalle = async (id_lote) => {
     try {
-        const response = await axios.get(`${API_URL}/lotes/${id_lote}`);
+        const response = await httpClient.get(`${API_URL}/lotes/${id_lote}`);
         return response.data;
     } catch (error) {
         console.error("Error fetching lot details:", error);
@@ -67,7 +67,7 @@ export const getLoteDetalle = async (id_lote) => {
 // Movimientos
 export const getMovimientos = async () => {
     try {
-        const response = await axios.get(`${API_URL}/movimientos`);
+        const response = await httpClient.get(`${API_URL}/movimientos`);
         return response.data;
     } catch (error) {
         console.error("Error fetching movements:", error);
@@ -77,7 +77,7 @@ export const getMovimientos = async () => {
 
 export const crearMovimiento = async (data) => {
     try {
-        const response = await axios.post(`${API_URL}/movimientos`, data);
+        const response = await httpClient.post(`${API_URL}/movimientos`, data);
         return response.data;
     } catch (error) {
         console.error("Error creating movement:", error);
@@ -88,7 +88,7 @@ export const crearMovimiento = async (data) => {
 // Alias para compatibilidad
 export const createElemento = async (data) => {
     try {
-        const response = await axios.post(`${API_URL}/elemento`, {
+        const response = await httpClient.post(`${API_URL}/elemento`, {
             codigo_elemento: data.codigo_elemento,
             elemento: data.elemento,
             cantidad: data.cantidad,
@@ -104,7 +104,7 @@ export const createElemento = async (data) => {
 
 export const updateElemento = async (id_lote, data) => {
     try {
-        const response = await axios.put(`${API_URL}/elemento/${id_lote}`, data);
+        const response = await httpClient.put(`${API_URL}/elemento/${id_lote}`, data);
         return response.data;
     } catch (error) {
         console.error("Error updating element:", error.response?.data || error.message);

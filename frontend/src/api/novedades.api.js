@@ -1,7 +1,9 @@
+import { authFetch } from "./fetchClient";
+
 const API_URL = "https://luminariasevc.onrender.com/api/novedades";
 
 export const getNovedades = async () => {
-    const res = await fetch(`${API_URL}?_=${Date.now()}`, { cache: "no-store" });
+    const res = await authFetch(`${API_URL}?_=${Date.now()}`, { cache: "no-store" });
     const data = await res.json();
     if (!res.ok || data.error) {
         throw new Error(data.error || 'Error consultando novedades');
@@ -10,7 +12,7 @@ export const getNovedades = async () => {
 };
 
 export const createNovedad = async (data) => {
-    const res = await fetch(API_URL, {
+    const res = await authFetch(API_URL, {
         method: "POST",
         headers: {
             "Content-Type": "application/json"
@@ -25,7 +27,7 @@ export const createNovedad = async (data) => {
 };
 
 export const updateNovedad = async (id, data) => {
-    const res = await fetch(`${API_URL}/${id}`, {
+    const res = await authFetch(`${API_URL}/${id}`, {
         method: "PUT",
         headers: {
             "Content-Type": "application/json"
@@ -42,7 +44,7 @@ export const updateNovedad = async (id, data) => {
 
 export const diagnosticarLampara = async (numeroLampara) => {
     const url = `${API_URL}/diagnostico/${encodeURIComponent(numeroLampara)}`;
-    const res = await fetch(url);
+    const res = await authFetch(url);
     const data = await res.json();
     if (!res.ok || data.error) {
         throw new Error(data.error || "Error consultando informaciÃ³n de la lÃ¡mpara");

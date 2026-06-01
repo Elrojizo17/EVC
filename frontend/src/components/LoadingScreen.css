@@ -1,0 +1,63 @@
+:root {
+  --loading-bg: radial-gradient(circle at top, #f0f6fb 0%, #e6eef6 45%, #dae5f0 100%);
+  --loading-card: #ffffff;
+  --loading-accent: #0d70b4;
+  --loading-text: #0f172a;
+}
+
+.loading-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--loading-bg);
+  padding: 24px;
+}
+
+.loading-card {
+  width: min(540px, 92vw);
+  background: var(--loading-card);
+  border-radius: 18px;
+  padding: 32px 36px;
+  box-shadow: 0 14px 40px rgba(15, 23, 42, 0.12);
+  text-align: center;
+}
+
+.loading-title {
+  font-family: "Barlow Condensed", "Segoe UI", sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--loading-text);
+  margin-bottom: 10px;
+  letter-spacing: 0.5px;
+}
+
+.loading-subtitle {
+  font-size: 16px;
+  color: #334155;
+  margin-bottom: 24px;
+}
+
+.loading-spinner {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 6px solid #dbe7f3;
+  border-top-color: var(--loading-accent);
+  margin: 0 auto 18px;
+  animation: loading-spin 1s linear infinite;
+}
+
+.loading-footnote {
+  font-size: 13px;
+  color: #64748b;
+}
+
+@keyframes loading-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

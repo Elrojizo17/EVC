@@ -1,11 +1,11 @@
-import axios from "axios";
+import httpClient from "./httpClient";
 
 const API_URL = "https://luminariasevc.onrender.com/api/electricistas";
 
 // Get all electricians
 export const getElectricistas = async () => {
     try {
-        const response = await axios.get(API_URL);
+        const response = await httpClient.get(API_URL);
         return response.data;
     } catch (error) {
         console.error("Error fetching electricians:", error);
@@ -16,7 +16,7 @@ export const getElectricistas = async () => {
 // Get single electrician with inventory
 export const getElectricistaDetalle = async (id) => {
     try {
-        const response = await axios.get(`${API_URL}/${id}`);
+        const response = await httpClient.get(`${API_URL}/${id}`);
         return response.data;
     } catch (error) {
         console.error("Error fetching electrician details:", error);
@@ -27,7 +27,7 @@ export const getElectricistaDetalle = async (id) => {
 // Create new electrician
 export const createElectricista = async (data) => {
     try {
-        const response = await axios.post(API_URL, data);
+        const response = await httpClient.post(API_URL, data);
         return response.data;
     } catch (error) {
         console.error("Error creating electrician:", error);
@@ -38,7 +38,7 @@ export const createElectricista = async (data) => {
 // Update electrician
 export const updateElectricista = async (id, data) => {
     try {
-        const response = await axios.put(`${API_URL}/${id}`, data);
+        const response = await httpClient.put(`${API_URL}/${id}`, data);
         return response.data;
     } catch (error) {
         console.error("Error updating electrician:", error);
@@ -49,7 +49,7 @@ export const updateElectricista = async (id, data) => {
 // Assign product lot to electrician
 export const asignarProductoElectricista = async (data) => {
     try {
-        const response = await axios.post(`${API_URL}/inventario/asignar`, data);
+        const response = await httpClient.post(`${API_URL}/inventario/asignar`, data);
         return response.data;
     } catch (error) {
         console.error("Error assigning product:", error);
@@ -60,7 +60,7 @@ export const asignarProductoElectricista = async (data) => {
 // Remove product from electrician inventory
 export const removerProductoElectricista = async (id_registro) => {
     try {
-        const response = await axios.delete(`${API_URL}/inventario/${id_registro}`);
+        const response = await httpClient.delete(`${API_URL}/inventario/${id_registro}`);
         return response.data;
     } catch (error) {
         console.error("Error removing product:", error);
@@ -71,7 +71,7 @@ export const removerProductoElectricista = async (id_registro) => {
 // Get products
 export const getProductos = async () => {
     try {
-        const response = await axios.get(`${API_URL}/productos/lista`);
+        const response = await httpClient.get(`${API_URL}/productos/lista`);
         return response.data;
     } catch (error) {
         console.error("Error fetching products:", error);
@@ -83,7 +83,7 @@ export const getProductos = async () => {
 export const getLotes = async (id_producto = null) => {
     try {
         const params = id_producto ? `?id_producto=${id_producto}` : "";
-        const response = await axios.get(`${API_URL}/lotes/lista${params}`);
+        const response = await httpClient.get(`${API_URL}/lotes/lista${params}`);
         return response.data;
     } catch (error) {
         console.error("Error fetching lots:", error);

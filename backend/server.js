@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 const errorHandler = require("./middleware/error.middleware");
+const { authenticateToken, authorizeRoles } = require("./middleware/auth.middleware");
 const pool = require("./db");
 const runMigrations = require("./runMigrations");
 
@@ -36,14 +37,16 @@ const gastoRoutes = require("./routes/gasto.routes");
 const electricistaRoutes = require("./routes/electricista.routes");
 const configRoutes = require("./routes/config.routes");
 const otpRoutes = require("./routes/otp.routes");
+const authRoutes = require("./routes/auth.routes");
 
-app.use("/api/luminarias", luminariaRoutes);
-app.use("/api/novedades", novedadRoutes);
-app.use("/api/inventario", inventarioRoutes);
-app.use("/api/gastos", gastoRoutes);
-app.use("/api/electricistas", electricistaRoutes);
-app.use("/api/config", configRoutes);
-app.use("/api/otp", otpRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/luminarias", authenticateToken, authorizeRoles("ADMIN", "INVITADO"), luminariaRoutes);
+app.use("/api/novedades", authenticateToken, authorizeRoles("ADMIN"), novedadRoutes);
+app.use("/api/inventario", authenticateToken, authorizeRoles("ADMIN"), inventarioRoutes);
+app.use("/api/gastos", authenticateToken, authorizeRoles("ADMIN"), gastoRoutes);
+app.use("/api/electricistas", authenticateToken, authorizeRoles("ADMIN"), electricistaRoutes);
+app.use("/api/config", authenticateToken, authorizeRoles("ADMIN"), configRoutes);
+app.use("/api/otp", authenticateToken, authorizeRoles("ADMIN"), otpRoutes);
 
 // ruta raíz
 app.get("/", (req, res) => {

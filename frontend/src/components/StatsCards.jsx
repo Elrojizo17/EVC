@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
+import httpClient from "../api/httpClient";
 import { getNovedades } from "../api/novedades.api";
 import { getGastos } from "../api/gastos.api";
 
 const getLuminarias = async () => {
     try {
-        const response = await axios.get("https://luminariasevc.onrender.com/api/luminarias");
+        const response = await httpClient.get("https://luminariasevc.onrender.com/api/luminarias");
         return response.data;
     } catch (error) {
         console.error("Error fetching luminarias:", error);

@@ -1,6 +1,6 @@
 import { MapContainer, TileLayer, CircleMarker, Popup } from "react-leaflet";
 import { useEffect, useMemo, useState, useRef } from "react";
-import axios from "axios";
+import httpClient from "../api/httpClient";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -8,7 +8,7 @@ const API_URL = "https://luminariasevc.onrender.com/api/luminarias";
 
 const getLuminarias = async () => {
     try {
-        const response = await axios.get(API_URL);
+        const response = await httpClient.get(API_URL);
         return response.data;
     } catch (error) {
         console.error("Error fetching luminarias:", error);

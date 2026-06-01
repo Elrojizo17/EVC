@@ -1,10 +1,10 @@
-import axios from "axios";
+import httpClient from "./httpClient";
 
 const API_URL = "https://luminariasevc.onrender.com/api/config";
 
 export const getUiConfig = async () => {
     try {
-        const response = await axios.get(`${API_URL}/ui`);
+        const response = await httpClient.get(`${API_URL}/ui`);
         return response.data;
     } catch (error) {
         console.error("Error fetching UI config:", error);

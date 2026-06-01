@@ -1,7 +1,9 @@
+import { authFetch } from "./fetchClient";
+
 const API_URL = "https://luminariasevc.onrender.com/api/otp";
 
 export const solicitarOtp = async (email) => {
-    const res = await fetch(`${API_URL}/solicitar`, {
+    const res = await authFetch(`${API_URL}/solicitar`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json"
@@ -18,7 +20,7 @@ export const solicitarOtp = async (email) => {
 };
 
 export const verificarOtp = async (codigo, email) => {
-    const res = await fetch(`${API_URL}/verificar`, {
+    const res = await authFetch(`${API_URL}/verificar`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json"

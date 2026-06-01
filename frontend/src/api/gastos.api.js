@@ -1,7 +1,9 @@
+import { authFetch } from "./fetchClient";
+
 const API_URL = "https://luminariasevc.onrender.com/api/gastos";
 
 export const getGastos = async () => {
-    const res = await fetch(`${API_URL}?_=${Date.now()}`, { cache: "no-store" });
+    const res = await authFetch(`${API_URL}?_=${Date.now()}`, { cache: "no-store" });
     const data = await res.json();
     if (!res.ok || data.error) {
         throw new Error(data.error || 'Error consultando gastos');
@@ -10,7 +12,7 @@ export const getGastos = async () => {
 };
 
 export const createGasto = async (data) => {
-    const res = await fetch(API_URL, {
+    const res = await authFetch(API_URL, {
         method: "POST",
         headers: {
             "Content-Type": "application/json"
@@ -25,7 +27,7 @@ export const createGasto = async (data) => {
 };
 
 export const deleteGasto = async (idGasto) => {
-    const res = await fetch(`${API_URL}/${idGasto}`, {
+    const res = await authFetch(`${API_URL}/${idGasto}`, {
         method: "DELETE"
     });
     const result = await res.json();

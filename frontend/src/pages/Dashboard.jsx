@@ -1,7 +1,8 @@
-﻿import { useEffect, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import MapView from '../components/MapView';
 import logoEvc from '../assets/evc-logo.svg';
+import { useAuth } from '../context/AuthContext';
 import './Dashboard.css';
 
 const dashboardOptions = [
@@ -15,6 +16,7 @@ const dashboardOptions = [
 ];
 
 export default function Dashboard() {
+    const { rol, usuario, logout } = useAuth();
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [mostrarFiltros, setMostrarFiltros] = useState(false);
     const [tecnologiaFiltro, setTecnologiaFiltro] = useState(() => {
@@ -32,6 +34,13 @@ export default function Dashboard() {
     const [numeroMax, setNumeroMax] = useState(() => {
         return localStorage.getItem('numeroMax') || '';
     });
+
+    const menuOptions = useMemo(() => {
+        if (rol === 'INVITADO') {
+            return dashboardOptions.filter((option) => option.path === '/');
+        }
+        return dashboardOptions;
+    }, [rol]);
 
     useEffect(() => {
         localStorage.setItem('tecnologiaFiltro', tecnologiaFiltro);
@@ -71,7 +80,7 @@ export default function Dashboard() {
                         <h1 className='dashboard-title'>Gestión de Luminarias</h1>
 
                         <nav className='dashboard-menu'>
-                            {dashboardOptions.map((option) => (
+                            {menuOptions.map((option) => (
                                 <NavLink
                                     key={option.path}
                                     to={option.path}
@@ -84,6 +93,15 @@ export default function Dashboard() {
                                 </NavLink>
                             ))}
                         </nav>
+
+                        <div className='dashboard-sidebar-footer'>
+                            <div className='dashboard-user-role'>
+                                {usuario?.nombre || 'Usuario'} · {rol || 'SIN ROL'}
+                            </div>
+                            <button type='button' className='dashboard-logout' onClick={logout}>
+                                Cerrar sesion
+                            </button>
+                        </div>
                     </div>
                 </aside>
 
