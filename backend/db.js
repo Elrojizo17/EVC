@@ -1,25 +1,18 @@
 const { Pool } = require("pg");
 require("dotenv").config();
 
-const requiredEnvVars = ["DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWORD", "DB_NAME"];
+const requiredEnvVars = ["DATABASE_URL"];
 const missingEnv = requiredEnvVars.filter((key) => !process.env[key] || String(process.env[key]).trim() === "");
 
 if (missingEnv.length > 0) {
     throw new Error(`Variables de entorno faltantes: ${missingEnv.join(", ")}`);
 }
 
-const dbPort = Number(process.env.DB_PORT);
-
-if (Number.isNaN(dbPort)) {
-    throw new Error("DB_PORT debe ser un número válido");
-}
-
 const pool = new Pool({
-    host: process.env.DB_HOST,
-    port: dbPort,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+        rejectUnauthorized: false,
+    },
 });
 
 // SOLO LOG, NO connect()
