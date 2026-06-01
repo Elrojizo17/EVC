@@ -12,6 +12,7 @@ SELECT
     COALESCE(p.fecha_compra, CURRENT_DATE)
 FROM producto p
 WHERE p.activo = TRUE
+  AND p.cantidad_inicial > 0
   AND NOT EXISTS (
       SELECT 1 FROM movimiento_bodega mb 
       WHERE mb.codigo_producto = p.codigo 

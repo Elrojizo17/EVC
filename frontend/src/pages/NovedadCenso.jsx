@@ -15,7 +15,7 @@ const validationsNovedad = {
     tecnologia_anterior: [],
     tecnologia_nueva: [],
     potencia_nueva_w: [],
-    fecha_novedad: [validationRules.required],
+    fecha_novedad: [validationRules.required, validationRules.dateIsoCalendar],
     id_electricista: [validationRules.required],
     codigo_pqr: [validationRules.required, validationRules.minLength(3)],
     observacion: []
@@ -70,7 +70,6 @@ export default function NovedadCenso() {
             tecnologia_anterior: "",
             tecnologia_nueva: "",
             potencia_nueva_w: "",
-            id_elemento_reemplazo: "",
             fecha_novedad: new Date().toISOString().split("T")[0],
             id_electricista: "",
             codigo_pqr: "",
@@ -163,13 +162,12 @@ export default function NovedadCenso() {
             return;
         }
 
-        if (formNovedad.tecnologia_anterior || formNovedad.tecnologia_nueva || formNovedad.potencia_nueva_w || formNovedad.id_elemento_reemplazo) {
+        if (formNovedad.tecnologia_anterior || formNovedad.tecnologia_nueva || formNovedad.potencia_nueva_w) {
             setFormNovedad((prev) => ({
                 ...prev,
                 tecnologia_anterior: "",
                 tecnologia_nueva: "",
-                potencia_nueva_w: "",
-                id_elemento_reemplazo: ""
+                potencia_nueva_w: ""
             }));
         }
     }, [
@@ -177,7 +175,6 @@ export default function NovedadCenso() {
         formNovedad.tecnologia_anterior,
         formNovedad.tecnologia_nueva,
         formNovedad.potencia_nueva_w,
-        formNovedad.id_elemento_reemplazo,
         setFormNovedad
     ]);
 
@@ -599,37 +596,7 @@ export default function NovedadCenso() {
                                     </select>
                                 </div>
 
-                                <div>
-                                    <label style={labelStyle}>Elemento de reemplazo *</label>
-                                    <select
-                                        name="id_elemento_reemplazo"
-                                        value={formNovedad.id_elemento_reemplazo}
-                                        onChange={handleChangeNovedad}
-                                        onBlur={handleBlurNovedad}
-                                        required
-                                        style={inputStyle}
-                                    >
-                                        <option value="">Seleccione lámpara del inventario</option>
-                                        {inventario.map((i) => {
-                                            const stockDisponible = Number(i.stock_disponible || 0);
-                                            const stockBajo = stockDisponible > 0 && stockDisponible < umbralStockBajo;
-                                            const stockTexto = stockDisponible > 0 ? ` (Stock: ${stockDisponible})` : " (AGOTADO)";
-                                            const anioTexto = i.anio_compra ? ` - Año ${i.anio_compra}` : "";
-                                            return (
-                                                <option
-                                                    key={i.id_inventario}
-                                                    value={i.id_inventario}
-                                                    disabled={stockDisponible <= 0}
-                                                    style={{ color: stockBajo ? "#c2410c" : stockDisponible <= 0 ? "#b91c1c" : "#0f172a" }}
-                                                >
-                                                    {i.elemento} - {i.codigo_elemento}
-                                                    {anioTexto}
-                                                    {stockTexto}
-                                                </option>
-                                            );
-                                        })}
-                                    </select>
-                                </div>
+                                {/* "Elemento de reemplazo" removido por solicitud del usuario */}
 
                                 <div>
                                     <label style={labelStyle}>Potencia nueva (W)</label>

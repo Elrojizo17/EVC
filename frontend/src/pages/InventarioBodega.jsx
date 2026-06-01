@@ -67,7 +67,7 @@ const extraerNumeroOrden = (value) => {
 const ORDENES_OMITIDAS = new Set([6]);
 
 const calcularSiguienteOrdenObligatoria = (ultimoNumero) => {
-    let candidato = (ultimoNumero ?? -1) + 1;
+    let candidato = (ultimoNumero ?? 0) + 1;
     while (ORDENES_OMITIDAS.has(candidato)) {
         candidato += 1;
     }
@@ -1318,27 +1318,6 @@ export default function InventarioBodega() {
                                     })}
                                 </tbody>
                             </table>
-
-                            {/* Total gastado */}
-                            <div style={{
-                                marginTop: "20px",
-                                padding: "15px",
-                                background: "#f0f9ff",
-                                borderRadius: "8px",
-                                borderLeft: "4px solid #0f7c90",
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center"
-                            }}>
-                                <div style={{ fontSize: "13px", color: "#475569" }}>
-                                    Total invertido en estos movimientos:
-                                </div>
-                                <div style={{ fontSize: "20px", fontWeight: "bold", color: "#0f7c90" }}>
-                                    ${formatCurrency(historial.reduce((sum, h) => {
-                                        return sum + getCostoTotalMovimiento(h);
-                                    }, 0))}
-                                </div>
-                            </div>
                         </div>
                     )}
                 </div>

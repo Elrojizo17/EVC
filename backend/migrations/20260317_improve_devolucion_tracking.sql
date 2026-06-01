@@ -38,28 +38,37 @@ CREATE INDEX IF NOT EXISTS idx_detalle_novedad_tipo ON detalle_novedad(tipo_oper
 -- 4. Trigger para registrar automáticamente en detalle_novedad cuando se inserta un movimiento con novedad
 CREATE OR REPLACE FUNCTION registrar_detalle_novedad()
 RETURNS TRIGGER AS $$
+DECLARE
+    v_tipo_operacion VARCHAR(20);
 BEGIN
     IF NEW.id_novedad_luminaria IS NOT NULL THEN
-        INSERT INTO detalle_novedad (
-            id_novedad,
-            tipo_operacion,
-            id_movimiento,
-            cantidad,
-            numero_lampara
-        ) SELECT
-            NEW.id_novedad_luminaria,
-            CASE 
-                WHEN NEW.tipo_movimiento = 'DESPACHADO' THEN 'DESPACHO'
-                WHEN NEW.tipo_movimiento = 'DEVOLUCION' THEN 'DEVOLUCION'
-                WHEN NEW.tipo_movimiento = 'PRESTADO' THEN 'PRESTAMO'
-                ELSE NEW.tipo_movimiento
-            END,
-            NEW.id_movimiento,
-            NEW.cantidad,
-            nl.numero_lampara
-        FROM novedad_luminaria nl
-        WHERE nl.id_novedad = NEW.id_novedad_luminaria
-        ON CONFLICT (id_novedad, id_movimiento) DO NOTHING;
+        -- Mapear el tipo de movimiento a tipo de operación válido
+        v_tipo_operacion := CASE
+            WHEN NEW.tipo_movimiento = 'DESPACHADO' THEN 'DESPACHO'
+            WHEN NEW.tipo_movimiento = 'DEVOLUCION' THEN 'DEVOLUCION'
+            WHEN NEW.tipo_movimiento = 'PRESTADO' THEN 'PRESTAMO'
+            ELSE NULL
+        END;
+
+        -- Solo insertar si el tipo de operación es válido
+        -- (rechaza MATERIAL_EXCEDENTE, ENTRADA, y otros tipos no trazables en detalle_novedad)
+        IF v_tipo_operacion IS NOT NULL THEN
+            INSERT INTO detalle_novedad (
+                id_novedad,
+                tipo_operacion,
+                id_movimiento,
+                cantidad,
+                numero_lampara
+            ) SELECT
+                NEW.id_novedad_luminaria,
+                v_tipo_operacion,
+                NEW.id_movimiento,
+                NEW.cantidad,
+                nl.numero_lampara
+            FROM novedad_luminaria nl
+            WHERE nl.id_novedad = NEW.id_novedad_luminaria
+            ON CONFLICT (id_novedad, id_movimiento) DO NOTHING;
+        END IF;
     END IF;
     RETURN NEW;
 END;

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx-js-style";
 import { getNovedades, updateNovedad } from "../api/novedades.api";
 import { getGastos, createGasto, deleteGasto } from "../api/gastos.api";
 import { getInventario } from "../api/inventario.api";
@@ -21,6 +22,8 @@ const createGastoRow = () => ({
     material: "#N/D",
     cantidad: ""
 });
+
+const REGISTROS_POR_PAGINA = 20;
 
 export default function ReporteNovedades() {
     const [novedades, setNovedades] = useState([]);
@@ -58,6 +61,7 @@ export default function ReporteNovedades() {
     const [permitirGastoVacio, setPermitirGastoVacio] = useState(false);
     const [ordenNovedades, setOrdenNovedades] = useState("asc");
     const [ordenCodigoMovimientos, setOrdenCodigoMovimientos] = useState("asc");
+    const [paginaActualNovedades, setPaginaActualNovedades] = useState(1);
     const [mostrarOtp, setMostrarOtp] = useState(false);
     const [pendingOtpAction, setPendingOtpAction] = useState(null);
     const { success, error: errorNotification } = useNotification();
@@ -261,6 +265,33 @@ export default function ReporteNovedades() {
         });
     }, [novedadesFiltradas, ordenNovedades]);
 
+    const totalNovedadesFiltradas = novedadesOrdenadas.length;
+    const totalPaginasNovedades = Math.max(1, Math.ceil(totalNovedadesFiltradas / REGISTROS_POR_PAGINA));
+
+    useEffect(() => {
+        setPaginaActualNovedades(1);
+    }, [busqueda, tipoFiltro]);
+
+    useEffect(() => {
+        setPaginaActualNovedades((prev) => Math.min(prev, totalPaginasNovedades));
+    }, [totalPaginasNovedades]);
+
+    const novedadesPaginadas = useMemo(() => {
+        const inicio = (paginaActualNovedades - 1) * REGISTROS_POR_PAGINA;
+        return novedadesOrdenadas.slice(inicio, inicio + REGISTROS_POR_PAGINA);
+    }, [novedadesOrdenadas, paginaActualNovedades]);
+
+    const rangoInicioNovedades = totalNovedadesFiltradas === 0
+        ? 0
+        : ((paginaActualNovedades - 1) * REGISTROS_POR_PAGINA) + 1;
+    const rangoFinNovedades = totalNovedadesFiltradas === 0
+        ? 0
+        : Math.min(paginaActualNovedades * REGISTROS_POR_PAGINA, totalNovedadesFiltradas);
+
+    const paginasVisiblesNovedades = useMemo(() => {
+        return buildPaginationItems(totalPaginasNovedades, paginaActualNovedades);
+    }, [totalPaginasNovedades, paginaActualNovedades]);
+
     const totalDetalle = useMemo(() => {
         return movimientosDetalle.reduce((sum, g) => sum + getCostoTotalMovimiento(g), 0);
     }, [movimientosDetalle]);
@@ -369,6 +400,9 @@ export default function ReporteNovedades() {
         }
         if (!String(formNovedad.fecha_novedad || "").trim()) {
             return "La fecha de novedad es obligatoria";
+        }
+        if (!isValidIsoCalendarDate(formNovedad.fecha_novedad)) {
+            return "La fecha de novedad no es válida";
         }
         if (!String(formNovedad.id_electricista || "").trim()) {
             return "Selecciona un electricista responsable";
@@ -712,6 +746,95 @@ export default function ReporteNovedades() {
         await ejecutarGuardadoMovimiento(accion.payload);
     };
 
+    const exportarNovedadesExcel = () => {
+        if (novedadesOrdenadas.length === 0) {
+            errorNotification("No hay novedades para exportar con los filtros actuales");
+            return;
+        }
+
+        const dataExcel = novedadesOrdenadas.map((n) => {
+            const movimientos = movimientosPorNovedad.get(Number(n.id_novedad)) || [];
+            return {
+                ID: `#${n.id_novedad}`,
+                "Lámpara": n.numero_lampara || "Sin lámpara asociada",
+                Tipo: n.tipo_novedad || "-",
+                Fecha: formatDate(n.fecha_novedad),
+                Movimientos: Number(movimientos.length || 0)
+            };
+        });
+
+        const headers = ["ID", "Lámpara", "Tipo", "Fecha", "Movimientos"];
+        const ws = XLSX.utils.json_to_sheet(dataExcel, { header: headers });
+
+        const excelBorder = {
+            top: { style: "thin", color: { rgb: "D9E3EE" } },
+            bottom: { style: "thin", color: { rgb: "D9E3EE" } },
+            left: { style: "thin", color: { rgb: "D9E3EE" } },
+            right: { style: "thin", color: { rgb: "D9E3EE" } }
+        };
+        const headerStyle = {
+            font: { name: "Calibri", sz: 12, bold: true, color: { rgb: "FFFFFF" } },
+            fill: { patternType: "solid", fgColor: { rgb: "0D70B4" } },
+            alignment: { horizontal: "center", vertical: "center" },
+            border: excelBorder
+        };
+        const textCellStyle = {
+            font: { name: "Calibri", sz: 11, color: { rgb: "334155" } },
+            alignment: { vertical: "center" },
+            border: excelBorder
+        };
+        const numericCellStyle = {
+            font: { name: "Calibri", sz: 11, color: { rgb: "0F172A" } },
+            alignment: { horizontal: "right", vertical: "center" },
+            border: excelBorder
+        };
+
+        for (let col = 0; col < headers.length; col += 1) {
+            const headerCell = XLSX.utils.encode_cell({ r: 0, c: col });
+            if (ws[headerCell]) {
+                ws[headerCell].s = headerStyle;
+            }
+        }
+
+        for (let row = 0; row < dataExcel.length; row += 1) {
+            const rowExcel = row + 1;
+            for (let col = 0; col < headers.length; col += 1) {
+                const cellRef = XLSX.utils.encode_cell({ r: rowExcel, c: col });
+                if (!ws[cellRef]) {
+                    continue;
+                }
+
+                if (col === 4) {
+                    ws[cellRef].t = "n";
+                    ws[cellRef].z = "#,##0";
+                    ws[cellRef].s = numericCellStyle;
+                    continue;
+                }
+
+                ws[cellRef].s = textCellStyle;
+            }
+        }
+
+        ws["!cols"] = [
+            { wch: 12 },
+            { wch: 24 },
+            { wch: 22 },
+            { wch: 13 },
+            { wch: 12 }
+        ];
+        ws["!rows"] = [{ hpx: 30 }, ...Array.from({ length: dataExcel.length }, () => ({ hpx: 22 }))];
+        ws["!autofilter"] = {
+            ref: `A1:${XLSX.utils.encode_cell({ r: 0, c: headers.length - 1 })}`
+        };
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Reporte Novedades");
+
+        const fecha = new Date().toISOString().split("T")[0];
+        XLSX.writeFile(wb, `reporte_novedades_${fecha}.xlsx`);
+        success("Reporte de novedades exportado a Excel");
+    };
+
     return (
         <div style={{ padding: "8px 10px", maxWidth: "1200px", margin: "0 auto" }}>
 
@@ -754,6 +877,12 @@ export default function ReporteNovedades() {
                         <option value="CAMBIO_TECNOLOGIA">Cambio de tecnología</option>
                         <option value="INSTALACION">Instalación</option>
                     </select>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "14px" }}>
+                    <button type="button" onClick={exportarNovedadesExcel} style={buttonExportStyle}>
+                        Exportar Excel
+                    </button>
                 </div>
 
                 {loading ? (
@@ -804,7 +933,7 @@ export default function ReporteNovedades() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {novedadesOrdenadas.map((n) => {
+                                {novedadesPaginadas.map((n) => {
                                     const movimientos = movimientosPorNovedad.get(Number(n.id_novedad)) || [];
                                     const lamparaLabel = n.numero_lampara || "Sin lámpara asociada";
                                     return (
@@ -838,6 +967,59 @@ export default function ReporteNovedades() {
                                 })}
                             </tbody>
                         </table>
+
+                        <div style={paginationBarStyle}>
+                            <div style={paginationInfoStyle}>
+                                Mostrando {rangoInicioNovedades}-{rangoFinNovedades} de {totalNovedadesFiltradas} registros
+                            </div>
+
+                            <div style={paginationControlsStyle}>
+                                <button
+                                    type="button"
+                                    onClick={() => setPaginaActualNovedades((prev) => Math.max(prev - 1, 1))}
+                                    disabled={paginaActualNovedades === 1}
+                                    style={{
+                                        ...paginationButtonStyle,
+                                        ...(paginaActualNovedades === 1 ? paginationButtonDisabledStyle : null)
+                                    }}
+                                >
+                                    Anterior
+                                </button>
+
+                                {paginasVisiblesNovedades.map((item) => {
+                                    if (typeof item !== "number") {
+                                        return <span key={item} style={paginationEllipsisStyle}>...</span>;
+                                    }
+
+                                    const activa = item === paginaActualNovedades;
+                                    return (
+                                        <button
+                                            key={item}
+                                            type="button"
+                                            onClick={() => setPaginaActualNovedades(item)}
+                                            style={{
+                                                ...paginationButtonStyle,
+                                                ...(activa ? paginationButtonActiveStyle : null)
+                                            }}
+                                        >
+                                            {item}
+                                        </button>
+                                    );
+                                })}
+
+                                <button
+                                    type="button"
+                                    onClick={() => setPaginaActualNovedades((prev) => Math.min(prev + 1, totalPaginasNovedades))}
+                                    disabled={paginaActualNovedades === totalPaginasNovedades}
+                                    style={{
+                                        ...paginationButtonStyle,
+                                        ...(paginaActualNovedades === totalPaginasNovedades ? paginationButtonDisabledStyle : null)
+                                    }}
+                                >
+                                    Siguiente
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 )}
             </section>
@@ -1431,6 +1613,26 @@ function formatDateForInput(value) {
     return toIsoDateString(value);
 }
 
+function isValidIsoCalendarDate(value) {
+    const texto = String(value || "").trim();
+    const match = texto.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) {
+        return false;
+    }
+
+    const year = Number.parseInt(match[1], 10);
+    const month = Number.parseInt(match[2], 10);
+    const day = Number.parseInt(match[3], 10);
+    const fechaUtc = new Date(Date.UTC(year, month - 1, day));
+
+    return (
+        !Number.isNaN(fechaUtc.getTime())
+        && fechaUtc.getUTCFullYear() === year
+        && fechaUtc.getUTCMonth() === month - 1
+        && fechaUtc.getUTCDate() === day
+    );
+}
+
 function toIsoDateString(value) {
     if (!value) return "";
 
@@ -1449,6 +1651,32 @@ function toIsoDateString(value) {
     const month = String(parsed.getUTCMonth() + 1).padStart(2, "0");
     const day = String(parsed.getUTCDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
+}
+
+function buildPaginationItems(totalPaginas, paginaActual) {
+    if (totalPaginas <= 7) {
+        return Array.from({ length: totalPaginas }, (_, index) => index + 1);
+    }
+
+    const paginasClave = [1, totalPaginas, paginaActual - 1, paginaActual, paginaActual + 1]
+        .filter((page) => page >= 1 && page <= totalPaginas)
+        .sort((a, b) => a - b);
+
+    const unicas = [...new Set(paginasClave)];
+    const resultado = [];
+
+    for (let i = 0; i < unicas.length; i += 1) {
+        const page = unicas[i];
+        const anterior = unicas[i - 1];
+
+        if (typeof anterior === "number" && page - anterior > 1) {
+            resultado.push(`ellipsis-${anterior}-${page}`);
+        }
+
+        resultado.push(page);
+    }
+
+    return resultado;
 }
 
 const panelStyle = {
@@ -1475,6 +1703,51 @@ const tableHeaderRowStyle = { borderBottom: "2px solid #e2e8f0", background: "#f
 const tableRowStyle = { borderBottom: "1px solid #e2e8f0" };
 const thStyle = { padding: "8px 10px", textAlign: "left", color: "#0a5c6d" };
 const tdStyle = { padding: "8px 10px", color: "#475569" };
+const paginationBarStyle = {
+    marginTop: "14px",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "10px",
+    flexWrap: "wrap"
+};
+const paginationInfoStyle = {
+    fontSize: "12px",
+    color: "#64748b"
+};
+const paginationControlsStyle = {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    flexWrap: "wrap"
+};
+const paginationButtonStyle = {
+    minWidth: "34px",
+    height: "32px",
+    padding: "0 10px",
+    borderRadius: "8px",
+    border: "1px solid #cbd5e1",
+    background: "white",
+    color: "#0f172a",
+    fontSize: "12px",
+    fontWeight: 600,
+    cursor: "pointer"
+};
+const paginationButtonActiveStyle = {
+    background: "#1e78bd",
+    borderColor: "#1e78bd",
+    color: "white"
+};
+const paginationButtonDisabledStyle = {
+    opacity: 0.45,
+    cursor: "not-allowed"
+};
+const paginationEllipsisStyle = {
+    color: "#64748b",
+    padding: "0 4px",
+    fontSize: "12px",
+    userSelect: "none"
+};
 const labelStyle = { display: "block", marginBottom: "6px", fontSize: "12px", color: "#334155", fontWeight: "600" };
 const errorTextStyle = { marginTop: "6px", fontSize: "12px", color: "#dc2626" };
 const gastoHeaderStyle = {
@@ -1508,6 +1781,17 @@ const buttonEditStyle = {
     color: "#1e78bd",
     cursor: "pointer",
     fontSize: "12px",
+    fontWeight: "600"
+};
+
+const buttonExportStyle = {
+    border: "none",
+    borderRadius: "8px",
+    padding: "8px 12px",
+    background: "#0D70B4",
+    color: "white",
+    cursor: "pointer",
+    fontSize: "13px",
     fontWeight: "600"
 };
 

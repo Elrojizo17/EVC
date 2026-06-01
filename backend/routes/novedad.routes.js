@@ -2,6 +2,31 @@ const express = require("express");
 const router = express.Router();
 const pool = require("../db");
 
+const normalizarFechaInput = (value) => {
+    const texto = String(value || "").trim();
+    const match = texto.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) {
+        return null;
+    }
+
+    const year = Number.parseInt(match[1], 10);
+    const month = Number.parseInt(match[2], 10);
+    const day = Number.parseInt(match[3], 10);
+    const fechaUtc = new Date(Date.UTC(year, month - 1, day));
+
+    const esValida =
+        !Number.isNaN(fechaUtc.getTime())
+        && fechaUtc.getUTCFullYear() === year
+        && fechaUtc.getUTCMonth() === month - 1
+        && fechaUtc.getUTCDate() === day;
+
+    if (!esValida) {
+        return null;
+    }
+
+    return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+};
+
 // GET todas las novedades
 router.get("/", async (req, res) => {
     try {
@@ -89,6 +114,17 @@ router.post("/", async (req, res) => {
         const numeroLamparaDb = lamparaExistenteResult.rows[0].numero_lampara;
         const codigoPqrNormalizado = codigo_pqr ? String(codigo_pqr).trim() : null;
         const electricistaDocumento = id_electricista ? String(id_electricista).trim() : null;
+        const fechaNovedadNormalizada = (() => {
+            if (fecha_novedad === undefined || fecha_novedad === null || String(fecha_novedad).trim() === "") {
+                return new Date().toISOString().slice(0, 10);
+            }
+
+            const normalizada = normalizarFechaInput(fecha_novedad);
+            if (!normalizada) {
+                throw new Error("La fecha de novedad no es válida. Usa el formato YYYY-MM-DD con una fecha real del calendario.");
+            }
+            return normalizada;
+        })();
 
         if (electricistaDocumento) {
             const electricistaCheck = await client.query(
@@ -221,7 +257,7 @@ router.post("/", async (req, res) => {
             normalizarTecnologia(tecnologia_anterior),
             normalizarTecnologia(tecnologia_nueva),
             accion,
-            fecha_novedad || new Date(),
+            fechaNovedadNormalizada,
             observacion,
             codigoPqrNormalizado,
             electricistaDocumento
@@ -289,6 +325,17 @@ router.put("/:id", async (req, res) => {
         };
 
         const tipoFinal = tipo_novedad || actual.tipo_novedad;
+        const fechaNovedadFinal = (() => {
+            if (fecha_novedad === undefined) {
+                return actual.fecha_novedad;
+            }
+
+            const normalizada = normalizarFechaInput(fecha_novedad);
+            if (!normalizada) {
+                throw new Error("La fecha de novedad no es válida. Usa el formato YYYY-MM-DD con una fecha real del calendario.");
+            }
+            return normalizada;
+        })();
         const tecnologiaAnteriorFinal = String(tipoFinal).toUpperCase() === "CAMBIO_TECNOLOGIA"
             ? normalizarTecnologia(tecnologia_anterior !== undefined ? tecnologia_anterior : actual.tecnologia_anterior)
             : null;
@@ -331,7 +378,7 @@ router.put("/:id", async (req, res) => {
                 tipoFinal,
                 tecnologiaAnteriorFinal,
                 tecnologiaNuevaFinal,
-                fecha_novedad || actual.fecha_novedad,
+                fechaNovedadFinal,
                 observacion !== undefined ? (observacion || null) : actual.observacion,
                 codigoPqrFinal,
                 idElectricistaFinal,

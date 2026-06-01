@@ -144,5 +144,30 @@ export const validationRules = {
       return message || 'Formato inválido';
     }
     return '';
+  },
+
+  dateIsoCalendar: (value) => {
+    if (!value) {
+      return '';
+    }
+
+    const texto = String(value).trim();
+    const match = texto.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) {
+      return 'La fecha no es válida';
+    }
+
+    const year = Number.parseInt(match[1], 10);
+    const month = Number.parseInt(match[2], 10);
+    const day = Number.parseInt(match[3], 10);
+    const fechaUtc = new Date(Date.UTC(year, month - 1, day));
+
+    const esValida =
+      !Number.isNaN(fechaUtc.getTime())
+      && fechaUtc.getUTCFullYear() === year
+      && fechaUtc.getUTCMonth() === month - 1
+      && fechaUtc.getUTCDate() === day;
+
+    return esValida ? '' : 'La fecha no es válida';
   }
 };
