@@ -63,7 +63,7 @@ export default function MiniMapaLuminaria({ numeroLampara }) {
                     setLuminaria(encontrada);
                     setError("");
                 } else {
-                    setError("Esta luminaria no tiene coordenadas vÃ¡lidas");
+                    setError("Esta luminaria no tiene coordenadas validas");
                     setLuminaria(null);
                 }
             } else {
@@ -90,9 +90,9 @@ export default function MiniMapaLuminaria({ numeroLampara }) {
                 color: "#64748b",
                 fontSize: "13px"
             }}>
-                <div style={{ fontSize: "32px", marginBottom: "10px" }}>ðŸ—ºï¸</div>
+                <div style={{ fontSize: "32px", marginBottom: "10px" }}>Mapa</div>
                 <div style={{ fontWeight: "500", marginBottom: "5px" }}>Vista previa del mapa</div>
-                <div>Ingresa un nÃºmero de lÃ¡mpara para ver su ubicaciÃ³n aquÃ­</div>
+                <div>Ingresa un numero de lampara para ver su ubicacion aqui</div>
             </div>
         );
     }
@@ -122,7 +122,7 @@ export default function MiniMapaLuminaria({ numeroLampara }) {
                 color: "#dc2626",
                 fontSize: "12px"
             }}>
-                âš ï¸ {error}
+                {error}
             </div>
         );
     }
@@ -147,7 +147,7 @@ export default function MiniMapaLuminaria({ numeroLampara }) {
                 alignItems: "center",
                 gap: "6px"
             }}>
-                ðŸ“ UbicaciÃ³n de luminaria #{luminaria.numero_lampara}
+                Ubicacion de luminaria #{luminaria.numero_lampara}
             </div>
             
             <MapContainer
@@ -159,7 +159,7 @@ export default function MiniMapaLuminaria({ numeroLampara }) {
                 zoomControl={true}
             >
                 <TileLayer
-                    attribution='Â© OpenStreetMap'
+                    attribution='© OpenStreetMap'
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 />
                 
@@ -177,7 +177,7 @@ export default function MiniMapaLuminaria({ numeroLampara }) {
                         <div style={{ fontSize: "12px" }}>
                             <strong>Luminaria #{luminaria.numero_lampara}</strong>
                             <div style={{ marginTop: "5px", lineHeight: "1.5" }}>
-                                <div><strong>TecnologÃ­a:</strong> {luminaria.tecnologia}</div>
+                                <div><strong>Tecnologia:</strong> {luminaria.tecnologia}</div>
                                 <div><strong>Potencia:</strong> {Number(luminaria.potencia_w || 0).toFixed(0)} W</div>
                                 <div><strong>Estado:</strong> {luminaria.estado}</div>
                             </div>
@@ -193,7 +193,7 @@ export default function MiniMapaLuminaria({ numeroLampara }) {
                 color: "#64748b",
                 lineHeight: "1.6"
             }}>
-                <div><strong>TecnologÃ­a:</strong> {luminaria.tecnologia}</div>
+                <div><strong>Tecnologia:</strong> {luminaria.tecnologia}</div>
                 <div><strong>Potencia:</strong> {Number(luminaria.potencia_w || 0)} W</div>
                 <div><strong>Coord:</strong> X:{luminaria.coord_x}, Y:{luminaria.coord_y}</div>
             </div>

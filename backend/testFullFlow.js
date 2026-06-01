@@ -3,7 +3,7 @@ const axios = require("axios");
 
 async function testFullFlow() {
     try {
-        console.log("\nðŸ” TEST COMPLETO: BD â†’ API â†’ Frontend\n");
+        console.log("\nTEST COMPLETO: BD -> API -> Frontend\n");
 
         // 1. Verificar directamente en BD
         console.log("=== PASO 1: Consulta directa a BD ===");
@@ -41,27 +41,27 @@ async function testFullFlow() {
             console.log(`API recibido: ${data.length} elementos`);
             
             if (data.length === 0) {
-                console.log("âš ï¸ API devolviÃ³ 0 elementos!");
+                console.log("API devolvio 0 elementos!");
             } else {
-                console.log(`âœ… API devolviÃ³ ${data.length} elementos`);
+                console.log(`API devolvio ${data.length} elementos`);
                 console.log(`Primeros 5:`);
                 data.slice(0, 5).forEach((item, i) => {
                     console.log(`  ${i+1}. ${item.codigo_elemento || item.codigo} - ${item.elemento || item.nombre}`);
                 });
-                console.log(`Ãšltimos 5:`);
+                console.log("Ultimos 5:");
                 data.slice(-5).forEach((item, i) => {
                     console.log(`  ${data.length - 5 + i + 1}. ${item.codigo_elemento || item.codigo} - ${item.elemento || item.nombre}`);
                 });
             }
 
-            // 3. Verificar consolidaciÃ³n como lo hace el frontend
-            console.log("\n=== PASO 3: ConsolidaciÃ³n (como lo hace frontend) ===");
+            // 3. Verificar consolidacion como lo hace el frontend
+            console.log("\n=== PASO 3: Consolidacion (como lo hace frontend) ===");
             const mapa = new Map();
 
             data.forEach((item) => {
                 const codigo = String(item.codigo_elemento || "").trim().toUpperCase();
                 if (!codigo) {
-                    console.log(`âš ï¸ Elemento sin cÃ³digo: ${item.elemento}`);
+                    console.log(`Elemento sin codigo: ${item.elemento}`);
                     return;
                 }
 
@@ -77,10 +77,10 @@ async function testFullFlow() {
             });
 
             const consolidado = Array.from(mapa.values());
-            console.log(`DespuÃ©s de consolidaciÃ³n: ${consolidado.length} elementos`);
+            console.log(`Despues de consolidacion: ${consolidado.length} elementos`);
 
-            // 4. Aplicar bÃºsqueda vacÃ­a (como lo hace el frontend)
-            console.log("\n=== PASO 4: Filtrado con bÃºsqueda vacÃ­a ===");
+            // 4. Aplicar busqueda vacia (como lo hace el frontend)
+            console.log("\n=== PASO 4: Filtrado con busqueda vacia ===");
             const filtrado = consolidado.filter((item) => {
                 const termino = "".toLowerCase();
                 return (
@@ -89,20 +89,20 @@ async function testFullFlow() {
                 );
             });
 
-            console.log(`DespuÃ©s de filtrar: ${filtrado.length} elementos`);
+            console.log(`Despues de filtrar: ${filtrado.length} elementos`);
 
             if (filtrado.length !== consolidado.length) {
-                console.log("âŒ El filtro estÃ¡ eliminando elementos!");
+                console.log("El filtro esta eliminando elementos!");
             }
 
-            // 5. Verificar duplicados de cÃ³digos
+            // 5. Verificar duplicados de codigos
             console.log("\n=== PASO 5: Verificar duplicados ===");
             const codigosApi = data.map(x => String(x.codigo_elemento || "").trim().toUpperCase()).filter(Boolean);
             const codigosUnicos = new Set(codigosApi);
             if (codigosApi.length !== codigosUnicos.size) {
-                console.log(`âš ï¸ Hay duplicados: ${codigosApi.length} total, ${codigosUnicos.size} Ãºnicos`);
+                console.log(`Hay duplicados: ${codigosApi.length} total, ${codigosUnicos.size} unicos`);
             } else {
-                console.log(`âœ… Sin duplicados`);
+                console.log("Sin duplicados");
             }
 
             console.log("\n=== RESUMEN ===");
@@ -112,9 +112,9 @@ async function testFullFlow() {
             console.log(`Frontend (filtrado): ${filtrado.length}`);
 
         } catch (error) {
-            console.error("âŒ Error llamando al API:", error.message);
+            console.error("Error llamando al API:", error.message);
             if (error.code === "ECONNREFUSED") {
-                console.log("El servidor NO estÃ¡ corriendo en https://luminariasevc.onrender.com");
+                console.log("El servidor NO esta corriendo en https://luminariasevc.onrender.com");
             }
         }
 

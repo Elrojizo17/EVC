@@ -112,7 +112,7 @@ export const updateElemento = async (id_lote, data) => {
     }
 };
 
-// Alias para compatibilidad con cÃ³digo anterior
+// Alias para compatibilidad con codigo anterior
 export const getHistorialElemento = async (codigoProducto) => {
     try {
         // En el nuevo modelo, el historial se obtiene por codigo_producto

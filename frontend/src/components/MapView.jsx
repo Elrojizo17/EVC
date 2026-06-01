@@ -29,7 +29,7 @@ export default function MapView({ tecnologiaFiltro = "todas", busqueda = "", num
     const [luminarias, setLuminarias] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
-    const [actualizar, setActualizar] = useState(0); // Contador para forzar actualizaciÃ³n
+    const [actualizar, setActualizar] = useState(0); // Contador para forzar actualizacion
     const [luminariaSeleccionada, setLuminariaSeleccionada] = useState(null); // Luminaria con popup abierto
     const popupRef = useRef(null);
     const luminariaSeleccionadaRef = useRef(null); // Ref para acceder siempre al estado actual
@@ -44,13 +44,13 @@ export default function MapView({ tecnologiaFiltro = "todas", busqueda = "", num
         
         // Escuchar evento personalizado cuando se actualiza una luminaria
         const handleActualizacion = async () => {
-            console.log("ðŸŽ¯ MapView: Evento de actualizaciÃ³n recibido");
+            console.log("MapView: Evento de actualizacion recibido");
             setActualizar(prev => prev + 1);
             await cargarLuminarias();
             
-            // Si hay una luminaria seleccionada, actualizar su informaciÃ³n inmediatamente
+            // Si hay una luminaria seleccionada, actualizar su informacion inmediatamente
             if (luminariaSeleccionadaRef.current) {
-                console.log("ðŸ”„ Actualizando informaciÃ³n del popup para luminaria:", luminariaSeleccionadaRef.current.numero_lampara);
+                console.log("Actualizando informacion del popup para luminaria:", luminariaSeleccionadaRef.current.numero_lampara);
                 await actualizarLuminariaSeleccionada();
             }
         };
@@ -66,17 +66,17 @@ export default function MapView({ tecnologiaFiltro = "todas", busqueda = "", num
         try {
             setLoading(true);
             setError("");
-            console.log("ðŸ“¡ Cargando luminarias desde API...");
+            console.log("Cargando luminarias desde API...");
             const data = await getLuminarias();
             if (!Array.isArray(data)) {
                 setLuminarias([]);
-                setError("La API no devolviÃ³ una lista de luminarias.");
+                setError("La API no devolvio una lista de luminarias.");
                 return;
             }
-            console.log(`âœ… Se cargaron ${data.length} luminarias`);
+            console.log(`Se cargaron ${data.length} luminarias`);
             setLuminarias(data);
         } catch (err) {
-            console.error("âŒ Error cargando luminarias:", err);
+            console.error("Error cargando luminarias:", err);
             setLuminarias([]);
             setError("No se pudo cargar el mapa. Revisa el backend y CORS.");
         } finally {
@@ -88,23 +88,23 @@ export default function MapView({ tecnologiaFiltro = "todas", busqueda = "", num
         try {
             const lumiSeleccionada = luminariaSeleccionadaRef.current;
             if (!lumiSeleccionada) {
-                console.log("âš ï¸ No hay luminaria seleccionada");
+                console.log("No hay luminaria seleccionada");
                 return;
             }
             
-            console.log("ðŸ”„ Actualizando informaciÃ³n del popup...");
+            console.log("Actualizando informacion del popup...");
             const data = await getLuminarias();
             const lumiActualizada = data.find(l => l.numero_lampara === lumiSeleccionada.numero_lampara);
             
             if (lumiActualizada) {
-                console.log("âœ… Nuevos datos obtenidos:", lumiActualizada.tecnologia);
+                console.log("Nuevos datos obtenidos:", lumiActualizada.tecnologia);
                 setLuminariaSeleccionada(lumiActualizada);
-                console.log("âœ… Popup actualizado con nueva informaciÃ³n");
+                console.log("Popup actualizado con nueva informacion");
             } else {
-                console.warn("âš ï¸ No se encontrÃ³ la luminaria actualizada:", lumiSeleccionada.numero_lampara);
+                console.warn("No se encontro la luminaria actualizada:", lumiSeleccionada.numero_lampara);
             }
         } catch (err) {
-            console.error("âŒ Error actualizando luminaria seleccionada:", err);
+            console.error("Error actualizando luminaria seleccionada:", err);
         }
     };
 
@@ -152,7 +152,7 @@ export default function MapView({ tecnologiaFiltro = "todas", busqueda = "", num
                 renderer={L.canvas({ tolerance: 5 })}
             >
                 <TileLayer
-                    attribution='Â© OpenStreetMap'
+                    attribution='© OpenStreetMap'
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 />
 
@@ -176,7 +176,7 @@ export default function MapView({ tecnologiaFiltro = "todas", busqueda = "", num
                             }}
                             eventHandlers={{
                                 click: () => {
-                                    console.log("ðŸ“ Luminaria seleccionada:", l.numero_lampara);
+                                    console.log("Luminaria seleccionada:", l.numero_lampara);
                                     setLuminariaSeleccionada(l);
                                 }
                             }}
@@ -188,14 +188,14 @@ export default function MapView({ tecnologiaFiltro = "todas", busqueda = "", num
                                     </strong>
                                     <hr style={{ margin: "5px 0" }} />
                                     <div style={{ lineHeight: "1.6" }}>
-                                        <div><strong>TecnologÃ­a:</strong> {datosMostrados.tecnologia}</div>
+                                        <div><strong>Tecnologia:</strong> {datosMostrados.tecnologia}</div>
                                         <div><strong>Potencia:</strong> {Number(datosMostrados.potencia_w || 0).toFixed(0)} W</div>
                                         <div><strong>Coord X:</strong> {datosMostrados.coord_x}</div>
                                         <div><strong>Coord Y:</strong> {datosMostrados.coord_y}</div>
                                         <div><strong>Estado:</strong> {datosMostrados.estado}</div>
                                     </div>
                                     <div style={{ fontSize: "11px", color: "#888", marginTop: "10px", fontStyle: "italic" }}>
-                                        ActualizÃ¡ndose automÃ¡ticamente...
+                                        Actualizandose automaticamente...
                                     </div>
                                 </div>
                             </Popup>

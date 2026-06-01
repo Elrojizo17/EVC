@@ -2,12 +2,12 @@ const axios = require("axios");
 
 async function simularFrontend() {
     try {
-        console.log("\nðŸŽ­ SIMULACIÃ“N DEL FRONTEND\n");
+        console.log("\nSIMULACION DEL FRONTEND\n");
 
         // 1. Traer datos del API
         const response = await axios.get("https://luminariasevc.onrender.com/api/inventario/todos");
         const inventario = response.data;
-        console.log(`1ï¸âƒ£ API devolviÃ³: ${inventario.length} elementos`);
+        console.log(`1) API devolvio: ${inventario.length} elementos`);
 
         // 2. Consolidar (exacto como lo hace el frontend)
         const mapa = new Map();
@@ -31,22 +31,22 @@ async function simularFrontend() {
         });
 
         const inventarioConsolidado = Array.from(mapa.values());
-        console.log(`2ï¸âƒ£ Consolidado: ${inventarioConsolidado.length} elementos`);
+        console.log(`2) Consolidado: ${inventarioConsolidado.length} elementos`);
 
-        // 3. Buscar especÃ­ficamente el elemento 3
+        // 3. Buscar especificamente el elemento 3
         const elemento3 = inventarioConsolidado.find(x => x.codigo_elemento === "3");
-        console.log("\n3ï¸âƒ£ ELEMENTO '3':");
+        console.log("\n3) ELEMENTO '3':");
         if (elemento3) {
-            console.log(`   CÃ³digo: ${elemento3.codigo_elemento}`);
+            console.log(`   Codigo: ${elemento3.codigo_elemento}`);
             console.log(`   Nombre: ${elemento3.elemento}`);
             console.log(`   Cantidad (inicial): ${elemento3.cantidad}`);
             console.log(`   Stock disponible: ${elemento3.stock_disponible}`);
-            console.log(`   âœ… SISTE EN CONSOLIDADO`);
+            console.log("   SI ESTA EN CONSOLIDADO");
         } else {
-            console.log(`   âŒ NO ESTÃ EN CONSOLIDADO`);
+            console.log("   NO ESTA EN CONSOLIDADO");
         }
 
-        // 4. Filtrar (bÃºsqueda vacÃ­a como cuando abre la pÃ¡gina)
+        // 4. Filtrar (busqueda vacia como cuando abre la pagina)
         const busqueda = "";
         const termino = busqueda.toLowerCase();
         const inventarioFiltrado = inventarioConsolidado.filter((item) => {
@@ -56,22 +56,22 @@ async function simularFrontend() {
             );
         });
 
-        console.log(`\n4ï¸âƒ£ DespuÃ©s de filtrar con bÃºsqueda vacÃ­a: ${inventarioFiltrado.length} elementos`);
+        console.log(`\n4) Despues de filtrar con busqueda vacia: ${inventarioFiltrado.length} elementos`);
 
-        // 5. Verificar si el 3 estÃ¡ en el filtrado
+        // 5. Verificar si el 3 esta en el filtrado
         const elemento3Filtrado = inventarioFiltrado.find(x => x.codigo_elemento === "3");
         if (elemento3Filtrado) {
-            console.log(`   âœ… ELEMENTO 3 SÃ APARECE EN TABLA`);
+            console.log("   ELEMENTO 3 SI APARECE EN TABLA");
         } else {
-            console.log(`   âŒ ELEMENTO 3 NO APARECE EN TABLA`);
+            console.log("   ELEMENTO 3 NO APARECE EN TABLA");
         }
 
-        // 6. Ver todos los elementos que sÃ­ aparecen (solo cÃ³digos)
-        console.log("\n5ï¸âƒ£ ELEMENTOS QUE SISTEN APARECER:");
+        // 6. Ver todos los elementos que si aparecen (solo codigos)
+        console.log("\n5) ELEMENTOS QUE DEBEN APARECER:");
         console.log(inventarioFiltrado.map(x => x.codigo_elemento).join(", "));
 
-        // 7. Ver cuÃ¡l falta
-        console.log("\n6ï¸âƒ£ BÃšSQUEDA ESPECÃFICA: '3'");
+        // 7. Ver cual falta
+        console.log("\n6) BUSQUEDA ESPECIFICA: '3'");
         const busqueda3 = "3";
         const termino3 = busqueda3.toLowerCase();
         const filtrado3 = inventarioConsolidado.filter((item) => {
@@ -89,7 +89,7 @@ async function simularFrontend() {
     } catch (error) {
         console.error("Error:", error.message);
         if (error.code === "ECONNREFUSED") {
-            console.log("âŒ El servidor no estÃ¡ corriendo. Falta iniciar: npm start (en backend)");
+            console.log("El servidor no esta corriendo. Falta iniciar: npm start (en backend)");
         }
     }
 }

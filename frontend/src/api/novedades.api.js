@@ -47,7 +47,7 @@ export const diagnosticarLampara = async (numeroLampara) => {
     const res = await authFetch(url);
     const data = await res.json();
     if (!res.ok || data.error) {
-        throw new Error(data.error || "Error consultando informaciÃ³n de la lÃ¡mpara");
+        throw new Error(data.error || "Error consultando informacion de la lampara");
     }
     return data;
 };
