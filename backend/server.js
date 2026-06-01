@@ -11,6 +11,23 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+
+app.listen(3000, () => {
+    console.log('Servidor iniciado');
+});
+
+
+app.get('/health', (req, res) => {
+    res.status(200).json({
+        status: 'ok'
+    });
+});
+
+app.listen(3000, () => {
+    console.log('Servidor iniciado');
+});
+
+
 // 👉 IMPORTANTE: SOLO ESTAS RUTAS
 const luminariaRoutes = require("./routes/luminaria.routes");
 const novedadRoutes = require("./routes/novedad.routes");
