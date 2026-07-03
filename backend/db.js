@@ -10,6 +10,7 @@ if (missingEnv.length > 0) {
 
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
+    family: 4,
     ssl: {
         rejectUnauthorized: false,
     },
