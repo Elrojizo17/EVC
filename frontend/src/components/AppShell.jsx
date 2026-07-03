@@ -7,7 +7,7 @@ import '../pages/Dashboard.css';
 const menuOptionsBase = [
   { label: 'Mapa', path: '/' },
   { label: 'Registrar Novedad', path: '/novedad-censo' },
-  { label: 'Ingresas Inventario', path: '/inventario-bodega' },
+  { label: 'Inventario', path: '/inventario-bodega' },
   { label: 'Devoluciones / Prestamos', path: '/devoluciones-prestamos' },
   { label: 'Gestionar Electricistas', path: '/electricistas' },
   { label: 'Reporte Novedades', path: '/reporte-novedades' },
