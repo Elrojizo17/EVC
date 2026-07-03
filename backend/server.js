@@ -5,6 +5,7 @@ const errorHandler = require("./middleware/error.middleware");
 const { authenticateToken, authorizeRoles } = require("./middleware/auth.middleware");
 const pool = require("./db");
 const runMigrations = require("./runMigrations");
+const PORT = process.env.PORT || 3000;
 
 const app = express();
 
@@ -13,19 +14,10 @@ app.use(cors());
 app.use(express.json());
 
 
-app.listen(3000, () => {
-    console.log('Servidor iniciado');
-});
-
-
 app.get('/health', (req, res) => {
     res.status(200).json({
         status: 'ok'
     });
-});
-
-app.listen(3000, () => {
-    console.log('Servidor iniciado');
 });
 
 
@@ -60,8 +52,6 @@ app.use((req, res) => {
 
 // Manejo centralizado de errores
 app.use(errorHandler);
-
-const PORT = process.env.PORT || 3000;
 
 async function ensureDatabaseCompatibility() {
     await pool.query(`
@@ -109,15 +99,15 @@ async function startServer() {
         await ensureDatabaseCompatibility();
         console.log("✅ Compatibilidad de BD verificada (movimiento_bodega)");
 
-        const server = app.listen(PORT, () => {
-            console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
+        const server = app.listen(PORT, "0.0.0.0", () => {
+            console.log(`🚀 Servidor corriendo en http://0.0.0.0:${PORT}`);
         });
 
         server.on('error', (err) => {
             console.error('❌ Error del servidor:', err);
         });
     } catch (err) {
-        console.error("❌ Error preparando compatibilidad de BD:", err);
+        console.error("❌ Error durante el arranque del servidor:", err);
         process.exit(1);
     }
 }
